@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <!--
-  SBK_Break_Dashboard_v2.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v2)
+  SBK_Break_Dashboard_v5.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v5)
+  v5: ตัวอักษรในใบรายงาน PDF/JPEG อยู่กึ่งกลางบรรทัดตรงกับหน้าตัวอย่าง, เส้นตารางเส้นเดียว, ลบช่องลงชื่อ,
+      รายงานสัปดาห์/เดือนที่ยังไม่จบตัดถึงวันนี้และเทียบช่วงก่อนหน้าจำนวนวันเท่ากัน, สัดส่วนพักครบไม่รวมวันนี้
+  v4: ติดตามการพักแบบ Real-time รายบุคคล (พักไป/เหลือ), อันดับพนักงานที่พักเกินเวลา, การกระจายระยะเวลา, วันในสัปดาห์, ระดับความรุนแรง, ความครบถ้วน 2 ช่วง
+  v3: ปรับ UI/UX ใหม่ — พื้นหลัง Aurora, การ์ดกระจก, Hero, KPI ใหม่, ชุดสีกราฟสอดคล้องกับฟอร์ม (ช่วง1=อำพัน, ช่วง2=ฟ้า)
   ศูนย์การค้าซีคอน บางแค • คู่กับ SBK_Break_Form_v2.html และ Code_Break_v2.gs
   - ภาพรวม: KPI / Insight / กราฟ / ตารางละเอียด (แก้ไขเวลากลับ, ปิดรายการลืมกดกลับ, ลบ)
   - รายงาน A4: รายวัน / รายสัปดาห์ / รายเดือน (PDF หลายหน้า / JPEG) พร้อมเทียบช่วงก่อนหน้า
@@ -48,37 +52,79 @@
   if (window.tailwind) tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { sans: ['Sarabun', 'sans-serif'], head: ['Prompt', 'sans-serif'] } } } };
 </script>
 <style>
-  :root { --brand: #0f766e; }
+  /* ================= DESIGN SYSTEM v3 — Aurora + Glass ================= */
+  :root { --brand: #0f766e; --g1: #0d9488; --g2: #4f46e5; --au1: rgba(45,212,191,.40); --au2: rgba(129,140,248,.40); --au3: rgba(56,189,248,.35);
+    --ring: rgba(20,184,166,.22); --ink: #0f172a; --muted: #64748b; --line: rgba(148,163,184,.28); }
   html, body { font-family: 'Sarabun', sans-serif; line-height: 1.65; -webkit-tap-highlight-color: transparent; }
   .font-head { font-family: 'Prompt', sans-serif; }
-  body { background: #f1f5f9; }
-  .dark body { background: #0b1120; }
-  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 1rem; box-shadow: 0 1px 3px rgba(15,23,42,.06); }
-  .dark .card { background: #111827; border-color: #1f2937; }
-  .inp { width: 100%; border: 1px solid #cbd5e1; border-radius: .75rem; padding: .6rem .85rem; background: #fff; color: #0f172a; outline: none; transition: .15s; }
-  .inp:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
-  .dark .inp { background: #0f172a; border-color: #334155; color: #e2e8f0; color-scheme: dark; }
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; border-radius: .75rem; padding: .6rem 1rem; font-weight: 600; transition: .15s; user-select: none; }
+  body { background: #f3f5fb; color: var(--ink); }
+  .dark body { background: #060a17; color: #e2e8f0; }
+  /* พื้นหลัง Aurora: วงแสงสีนุ่มหลายชั้น + ตารางจาง ๆ — ใช้ radial-gradient (ไม่ใช้ filter blur) เพื่อให้ลื่นบนมือถือ */
+  .bg-aurora { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+  .bg-aurora i { position: absolute; border-radius: 50%; will-change: transform; }
+  .bg-aurora .o1 { width: 75vmax; height: 75vmax; left: -22vmax; top: -30vmax; background: radial-gradient(circle, var(--au1) 0%, transparent 62%); animation: orb1 26s ease-in-out infinite; }
+  .bg-aurora .o2 { width: 70vmax; height: 70vmax; right: -25vmax; top: -12vmax; background: radial-gradient(circle, var(--au2) 0%, transparent 62%); animation: orb2 30s ease-in-out infinite; }
+  .bg-aurora .o3 { width: 80vmax; height: 80vmax; left: 10vmax; bottom: -48vmax; background: radial-gradient(circle, var(--au3) 0%, transparent 62%); animation: orb1 34s ease-in-out infinite reverse; }
+  .bg-aurora::after { content: ''; position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(15,23,42,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,42,.045) 1px, transparent 1px);
+    background-size: 34px 34px; -webkit-mask-image: radial-gradient(ellipse at 50% 0%, #000 25%, transparent 75%); mask-image: radial-gradient(ellipse at 50% 0%, #000 25%, transparent 75%); }
+  .dark .bg-aurora i { opacity: .55; }
+  .dark .bg-aurora::after { background-image: linear-gradient(rgba(148,163,184,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.06) 1px, transparent 1px); }
+  @keyframes orb1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(6vmax,4vmax) scale(1.08); } }
+  @keyframes orb2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-5vmax,6vmax) scale(.94); } }
+  @media (prefers-reduced-motion: reduce) { .bg-aurora i { animation: none; } }
+
+  /* การ์ดกระจก (Glassmorphism) */
+  .card { background: rgba(255,255,255,.74); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5);
+    border: 1px solid rgba(255,255,255,.85); border-radius: 1.4rem;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 12px 32px -14px rgba(30,41,59,.22), 0 2px 6px -2px rgba(30,41,59,.06); }
+  .dark .card { background: rgba(15,23,42,.66); border-color: rgba(148,163,184,.14); box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 14px 34px -14px rgba(0,0,0,.65); }
+  .glass { background: rgba(255,255,255,.7); -webkit-backdrop-filter: blur(18px) saturate(1.6); backdrop-filter: blur(18px) saturate(1.6); }
+  .dark .glass { background: rgba(6,10,23,.72); }
+  .hdr-line { height: 2px; background: linear-gradient(90deg, var(--g1), var(--g2), #f59e0b, #10b981); opacity: .85; }
+
+  .inp { width: 100%; border: 1.5px solid #e2e8f0; border-radius: .95rem; padding: .62rem .9rem; background: rgba(255,255,255,.9); color: #0f172a; outline: none; transition: .18s; }
+  .inp:hover { border-color: #cbd5e1; }
+  .inp:focus { border-color: var(--brand); box-shadow: 0 0 0 4px var(--ring); background: #fff; }
+  .dark .inp { background: rgba(2,6,23,.6); border-color: #273449; color: #e2e8f0; color-scheme: dark; }
+  .dark .inp:focus { background: #0b1222; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; border-radius: .95rem; padding: .62rem 1.05rem; font-weight: 600; transition: transform .15s, box-shadow .2s, background .2s, filter .2s; user-select: none; }
   .btn:disabled { opacity: .5; cursor: not-allowed; }
   .btn:active:not(:disabled) { transform: scale(.97); }
-  .btn-ghost { background: #f1f5f9; color: #334155; }
-  .btn-ghost:hover { background: #e2e8f0; }
-  .dark .btn-ghost { background: #1f2937; color: #cbd5e1; }
-  .dark .btn-ghost:hover { background: #374151; }
-  .chip { display: inline-flex; align-items: center; gap: .3rem; padding: .15rem .6rem; border-radius: 999px; font-size: .78rem; font-weight: 600; white-space: nowrap; }
-  .chip-ok { background: #dcfce7; color: #166534; } .dark .chip-ok { background: #14532d; color: #bbf7d0; }
-  .chip-over { background: #fee2e2; color: #991b1b; } .dark .chip-over { background: #7f1d1d; color: #fecaca; }
-  .chip-active { background: #fef3c7; color: #92400e; } .dark .chip-active { background: #78350f; color: #fde68a; }
-  .chip-forgot { background: #ede9fe; color: #5b21b6; } .dark .chip-forgot { background: #4c1d95; color: #ddd6fe; }
-  .chip-mute { background: #e2e8f0; color: #475569; } .dark .chip-mute { background: #334155; color: #cbd5e1; }
+  .btn-ghost { background: rgba(255,255,255,.75); color: #334155; border: 1px solid rgba(148,163,184,.3); }
+  .btn-ghost:hover { background: #fff; box-shadow: 0 6px 16px -8px rgba(30,41,59,.3); }
+  .dark .btn-ghost { background: rgba(30,41,59,.7); color: #cbd5e1; border-color: rgba(148,163,184,.18); }
+  .dark .btn-ghost:hover { background: #273449; }
+  .btn-brand { color: #fff; background: linear-gradient(135deg, var(--g1), var(--g2)); box-shadow: 0 10px 22px -10px var(--brand); }
+  .btn-brand:hover { filter: brightness(1.07); box-shadow: 0 14px 28px -10px var(--brand); }
+  .chip { display: inline-flex; align-items: center; gap: .3rem; padding: .16rem .62rem; border-radius: 999px; font-size: .78rem; font-weight: 600; white-space: nowrap; }
+  .chip-ok { background: #d1fae5; color: #065f46; } .dark .chip-ok { background: rgba(16,185,129,.18); color: #6ee7b7; }
+  .chip-over { background: #ffe4e6; color: #9f1239; } .dark .chip-over { background: rgba(244,63,94,.2); color: #fda4af; }
+  .chip-active { background: #fef3c7; color: #92400e; } .dark .chip-active { background: rgba(245,158,11,.2); color: #fcd34d; }
+  .chip-forgot { background: #ede9fe; color: #5b21b6; } .dark .chip-forgot { background: rgba(139,92,246,.22); color: #c4b5fd; }
+  .chip-mute { background: #e2e8f0; color: #475569; } .dark .chip-mute { background: rgba(148,163,184,.18); color: #cbd5e1; }
+  /* หัวข้อการ์ด: ไอคอนในกล่องไล่สี */
+  .sec-h { display: flex; align-items: center; gap: .7rem; }
+  .sec-ic { width: 2.4rem; height: 2.4rem; border-radius: .9rem; display: grid; place-items: center; font-size: 1.15rem; flex-shrink: 0; color: #fff;
+    background: linear-gradient(135deg, var(--c1, var(--g1)), var(--c2, var(--g2))); box-shadow: 0 8px 18px -8px var(--c2, var(--brand)); }
+  .sec-t { font-family: 'Prompt', sans-serif; font-weight: 600; font-size: 1.05rem; line-height: 1.3; }
+  .sec-s { font-size: .8rem; color: var(--muted); line-height: 1.4; }
+  .dark .sec-s { color: #94a3b8; }
   .spinner { width: 1.1rem; height: 1.1rem; border: 2.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .pulse-red { animation: pulseRed 1.4s ease-in-out infinite; }
-  @keyframes pulseRed { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,.45); } 50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
-  .toast { animation: toastIn .25s ease-out; }
+  @keyframes pulseRed { 0%,100% { box-shadow: 0 0 0 0 rgba(244,63,94,.45); } 50% { box-shadow: 0 0 0 8px rgba(244,63,94,0); } }
+  .toast { animation: toastIn .25s ease-out; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
   @keyframes toastIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-  .modal-bg { background: rgba(15,23,42,.6); backdrop-filter: blur(3px); }
-  .tab-btn.active { background: var(--brand); color: #fff; box-shadow: 0 6px 16px rgba(79,70,229,.3); }
+  .fade-in { animation: fadeIn .35s ease-out both; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .modal-bg { background: rgba(15,23,42,.55); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+  .tab-btn { color: #475569; border-radius: .85rem; } .dark .tab-btn { color: #94a3b8; }
+  .tab-btn:hover:not(.active) { background: rgba(255,255,255,.7); } .dark .tab-btn:hover:not(.active) { background: rgba(51,65,85,.5); }
+  .tab-btn.active { background: linear-gradient(135deg, var(--g1), var(--g2)); color: #fff; box-shadow: 0 8px 18px -8px var(--brand); }
+  .seg-wrap { background: rgba(241,245,249,.8); border: 1px solid rgba(148,163,184,.25); } .dark .seg-wrap { background: rgba(15,23,42,.7); border-color: rgba(148,163,184,.15); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { background: rgba(148,163,184,.45); border-radius: 99px; border: 2px solid transparent; background-clip: padding-box; }
+  ::selection { background: var(--ring); }
 
   /* ================= SPLASH / IDLE SCREEN ================= */
   #splash { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer;
@@ -135,10 +181,35 @@
 <style>
   th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
   th.sortable:hover { color: var(--brand); }
-  .rtype { border: 2px solid #e2e8f0; border-radius: 1rem; padding: 1rem; text-align: left; transition: .15s; background: #fff; }
-  .dark .rtype { border-color: #334155; background: #0f172a; }
-  .rtype.sel { border-color: var(--brand); background: #eef2ff; box-shadow: 0 8px 20px rgba(79,70,229,.15); }
-  .dark .rtype.sel { background: #1e1b4b; border-color: #818cf8; }
+  .hero { background: linear-gradient(120deg, #0f766e 0%, #0891b2 35%, #2563eb 68%, #7c3aed 100%); background-size: 200% 200%; animation: heroShift 16s ease infinite; }
+  @keyframes heroShift { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+  .hero-shine { position: absolute; inset: 0; background: radial-gradient(600px 220px at 90% -30%, rgba(255,255,255,.35), transparent 60%), radial-gradient(420px 220px at 0% 130%, rgba(52,211,153,.4), transparent 60%); pointer-events: none; }
+  .rtype { border: 2px solid rgba(148,163,184,.3); border-radius: 1.2rem; padding: 1rem; text-align: left; transition: .2s; background: rgba(255,255,255,.75); }
+  .rtype:hover { transform: translateY(-2px); box-shadow: 0 12px 26px -14px rgba(30,41,59,.35); }
+  .dark .rtype { border-color: #273449; background: rgba(2,6,23,.5); }
+  .rtype.sel { border-color: var(--c2); background: linear-gradient(160deg, #fff, #f0f9ff); box-shadow: 0 14px 30px -14px var(--c2); }
+  .bnav.active { background: linear-gradient(135deg, var(--g1), var(--g2)); color: #fff !important; box-shadow: 0 8px 18px -8px var(--brand); }
+  .kpi { position: relative; overflow: hidden; border-radius: 1.4rem; color: #fff; padding: 1.1rem 1.2rem; box-shadow: 0 16px 34px -16px var(--sh); }
+  .kpi::before { content: ''; position: absolute; right: -40px; top: -40px; width: 150px; height: 150px; border-radius: 50%; background: rgba(255,255,255,.14); }
+  .kpi::after { content: ''; position: absolute; right: 30px; bottom: -60px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,.08); }
+  .kpi-ic { width: 2.6rem; height: 2.6rem; border-radius: .95rem; display: grid; place-items: center; font-size: 1.3rem; background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.3); }
+  .mini { border-left: 4px solid var(--mc); }
+  .live-ic { animation: liveBeat 2s ease-in-out infinite; }
+  @keyframes liveBeat { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+  .lv { position: relative; border-radius: 1.2rem; padding: .9rem 1rem; background: rgba(255,255,255,.82); border: 1px solid rgba(148,163,184,.28); transition: .2s; }
+  .dark .lv { background: rgba(15,23,42,.6); border-color: rgba(148,163,184,.16); }
+  .lv.soon { border-color: #fb923c; box-shadow: 0 10px 24px -14px #f97316; }
+  .lv.over { border-color: #fb7185; background: linear-gradient(160deg, rgba(255,241,242,.95), rgba(255,255,255,.85)); }
+  .dark .lv.over { background: linear-gradient(160deg, rgba(244,63,94,.18), rgba(15,23,42,.6)); }
+  .lv-ring { width: 64px; height: 64px; flex-shrink: 0; }
+  .lv-bar { height: 7px; border-radius: 99px; background: rgba(148,163,184,.25); overflow: hidden; }
+  .lv-bar > i { display: block; height: 100%; border-radius: 99px; transition: width .9s linear; }
+  .av { width: 2.5rem; height: 2.5rem; border-radius: .9rem; display: grid; place-items: center; color: #fff; font-family: 'Prompt', sans-serif; font-weight: 600; flex-shrink: 0; }
+  .rk { width: 2rem; height: 2rem; border-radius: .7rem; display: grid; place-items: center; font-family: 'Prompt', sans-serif; font-weight: 700; font-size: .85rem; }
+  #tBody tr { transition: background .15s; }
+  #tBody tr:hover { background: rgba(99,102,241,.06); }
+  thead.th-soft th { font-weight: 600; font-size: .78rem; text-transform: none; color: #64748b; }
+  .dark .rtype.sel { background: linear-gradient(160deg, rgba(14,165,233,.15), rgba(99,102,241,.12)); }
   /* ---------- หน้า A4 แนวตั้ง 794×1123 px @96dpi (สีคงที่ ไม่ตามธีม เพื่อพิมพ์บนกระดาษขาว) ---------- */
   #rpHost { position: fixed; left: -30000px; top: 0; }
   .rp-page { width: 794px; height: 1123px; background: #fff; color: #0f172a; font-family: 'Sarabun', sans-serif; line-height: 1.45; display: flex; flex-direction: column; padding: 30px 34px 22px; box-sizing: border-box; position: relative; overflow: hidden; }
@@ -155,21 +226,22 @@
   .rp-kpi .l { font-size: 10.5px; opacity: .92; }
   .rp-kpi .v { font-family: 'Prompt', sans-serif; font-size: 20px; font-weight: 700; line-height: 1.2; }
   .rp-kpi .d { font-size: 10px; opacity: .92; }
-  table.rp { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  /* ใช้ border แบบ separate (เส้นขวา+ล่างต่อเซลล์) — html2canvas วาด border-collapse เป็นเส้นซ้อน 2 ชั้น ทำให้ PDF ไม่เหมือนตัวอย่าง */
+  table.rp { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 11.5px; border-top: 1px solid #c7d2fe; border-left: 1px solid #c7d2fe; }
   /* line-height เป็น px คงที่ + vertical-align ทำให้ตัวอักษรไทย (สระบน/ล่าง) ไม่ล้นเส้นตารางตอนแปลงเป็นรูป */
-  table.rp th { background: #eef2ff; color: #312e81; font-weight: 600; padding: 3px 5px; line-height: 17px; border: 1px solid #c7d2fe; text-align: center; vertical-align: middle; }
-  table.rp td { padding: 2px 5px; line-height: 17px; border: 1px solid #e2e8f0; vertical-align: middle; }
+  table.rp th { background: #eef2ff; color: #312e81; font-weight: 600; padding: 3px 5px; line-height: 17px; border: 0; border-right: 1px solid #c7d2fe; border-bottom: 1px solid #c7d2fe; text-align: center; vertical-align: middle; }
+  table.rp td { padding: 2px 5px; line-height: 17px; border: 0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
   table.rp tr:nth-child(even) td { background: #f8fafc; }
   table.rp tr.tot td { background: #e0e7ff !important; font-weight: 700; }
   .c { text-align: center; } .r { text-align: right; } .red { color: #dc2626; font-weight: 600; } .grn { color: #059669; font-weight: 600; } .mut { color: #94a3b8; }
   .rp-ins { list-style: none; margin: 0; padding: 0; font-size: 11.5px; }
   .rp-ins li { padding: 3px 0 3px 2px; border-bottom: 1px dashed #e2e8f0; }
-  .rp-sign { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; font-size: 11.5px; color: #334155; text-align: center; margin-top: 6px; }
   .rp-note { font-size: 10px; color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 8px; }
   #rpPreview .pv { box-shadow: 0 10px 30px rgba(15,23,42,.18); border-radius: 6px; overflow: hidden; background: #fff; margin: 0 auto 16px; }
 </style>
 </head>
 <body class="text-slate-800 dark:text-slate-200 min-h-screen">
+<div class="bg-aurora" aria-hidden="true"><i class="o1"></i><i class="o2"></i><i class="o3"></i></div>
 <!-- ====================== SPLASH / IDLE SCREEN ====================== -->
 <div id="splash" role="dialog" aria-label="หน้าเปิดแอป">
   <div class="sp-blob" style="width:420px;height:420px;background:#f472b6;top:-120px;left:-100px"></div>
@@ -191,33 +263,48 @@
 
 
 <!-- ====================== HEADER ====================== -->
-<header class="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-800" style="padding-top: env(safe-area-inset-top)">
+<header class="sticky top-0 z-30 glass border-b border-white/60 dark:border-slate-800/80" style="padding-top: env(safe-area-inset-top)">
   <div class="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-3">
-    <img src="data:image/jpeg;base64,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" alt="" class="w-9 h-9 rounded-xl shadow">
-    <div class="hidden sm:block bg-white rounded-lg px-2 py-1 shadow-sm"><img src="data:image/png;base64,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" alt="Seacon Bangkae" class="h-7 w-auto"></div>
+    <img src="data:image/jpeg;base64,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" alt="" class="w-10 h-10 rounded-2xl shadow-lg shadow-teal-500/30 ring-2 ring-white/70">
+    <div class="hidden sm:block bg-white rounded-xl px-2.5 py-1 shadow-sm ring-1 ring-slate-200/70"><img src="data:image/png;base64,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" alt="Seacon Bangkae" class="h-7 w-auto"></div>
     <div class="min-w-0 flex-1">
-      <h1 class="font-head font-semibold text-base sm:text-lg leading-tight truncate">แดชบอร์ดสรุปการพักพนักงาน</h1>
+      <h1 class="font-head font-semibold text-base sm:text-lg leading-tight truncate bg-gradient-to-r from-teal-600 via-sky-600 to-violet-600 dark:from-teal-300 dark:via-sky-300 dark:to-violet-300 bg-clip-text text-transparent">แดชบอร์ดสรุปการพักพนักงาน</h1>
       <p class="text-xs text-slate-500 dark:text-slate-400 truncate tabular-nums" id="hdrClock">—</p>
     </div>
-    <nav class="hidden md:flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+    <nav class="hidden md:flex gap-1 seg-wrap p-1 rounded-2xl">
       <button class="tab-btn btn py-1.5 px-4 text-sm" data-tab="overview">📊 ภาพรวม</button>
       <button class="tab-btn btn py-1.5 px-4 text-sm" data-tab="report">📑 ใบรายงาน</button>
       <button class="tab-btn btn py-1.5 px-4 text-sm" data-tab="emp">👥 พนักงาน</button>
     </nav>
     <button id="syncPill" class="chip chip-mute" title="แตะเพื่อดึงข้อมูลล่าสุด">● กำลังเชื่อมต่อ</button>
-    <button id="btnTheme" class="btn btn-ghost !p-2 !rounded-full" title="สลับโหมดมืด/สว่าง" aria-label="สลับโหมดมืด/สว่าง">🌙</button>
+    <button id="btnTheme" class="btn btn-ghost !p-2.5 !rounded-full" title="สลับโหมดมืด/สว่าง" aria-label="สลับโหมดมืด/สว่าง">🌙</button>
   </div>
+  <div class="hdr-line"></div>
 </header>
 
 <main class="max-w-7xl mx-auto px-4 py-5 pb-28 md:pb-8">
 
   <!-- ====================== TAB: ภาพรวม ====================== -->
   <section id="tab-overview" class="tab-panel space-y-5">
-    <div class="card p-4">
+    <div class="hero relative overflow-hidden rounded-[1.75rem] p-5 sm:p-6 text-white shadow-2xl shadow-teal-500/20 fade-in">
+      <div class="hero-shine"></div>
+      <div class="relative flex flex-wrap items-center gap-4">
+        <div class="flex-1 min-w-[220px]">
+          <div class="inline-flex items-center gap-2 text-xs font-semibold bg-white/20 ring-1 ring-white/30 rounded-full px-3 py-1"><span class="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span> Break Analytics • Real-time</div>
+          <div class="font-head text-2xl sm:text-3xl font-bold mt-2">ภาพรวมการพักพนักงาน</div>
+          <div class="text-sm text-white/90" id="heroRange">—</div>
+        </div>
+        <div class="text-left sm:text-right">
+          <div class="font-head text-3xl sm:text-4xl font-bold tabular-nums drop-shadow" id="heroTime">--:--:--</div>
+          <div class="text-xs sm:text-sm text-white/85" id="heroDate">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="card p-4 relative z-20">
       <div class="flex flex-wrap items-end gap-3">
         <div>
           <label class="text-xs text-slate-500 block mb-1">ช่วงเวลา</label>
-          <div class="flex flex-wrap gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl" id="rangeSeg">
+          <div class="flex flex-wrap gap-1 seg-wrap p-1 rounded-2xl" id="rangeSeg">
             <button class="tab-btn btn py-1.5 px-3 text-sm" data-range="today">วันนี้</button>
             <button class="tab-btn btn py-1.5 px-3 text-sm" data-range="yesterday">เมื่อวาน</button>
             <button class="tab-btn btn py-1.5 px-3 text-sm" data-range="week">สัปดาห์นี้</button>
@@ -252,46 +339,85 @@
     </div>
 
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" id="kpiGrid"></div>
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3" id="miniGrid"></div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3" id="miniGrid"></div>
+
+    <!-- LIVE MONITOR: เวลาที่พักไป / เหลืออีกกี่นาที รายบุคคลแบบ Real-time -->
+    <div class="card p-5" id="liveCard">
+      <div class="flex flex-wrap items-center gap-3 mb-4">
+        <div class="mr-auto"><div class="sec-h"><span class="sec-ic live-ic" style="--c1:#f59e0b;--c2:#f43f5e">⏱️</span><div><div class="sec-t">ติดตามการพักแบบ Real-time</div><div class="sec-s">พักไปแล้วกี่นาที • เหลืออีกกี่นาที • อัปเดตทุกวินาที (ดึงข้อมูลใหม่ทุก 20 วินาที)</div></div></div></div>
+        <span class="chip chip-active text-sm" id="lvActive">กำลังพัก 0</span>
+        <span class="chip text-sm bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200" id="lvSoon">ใกล้ครบ 0</span>
+        <span class="chip chip-over text-sm" id="lvOver">เกินเวลา 0</span>
+      </div>
+      <div id="liveList" class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3"></div>
+      <div id="forgotBox" class="hidden mt-4 rounded-2xl ring-1 ring-violet-300/70 dark:ring-violet-500/30 bg-violet-50/80 dark:bg-violet-500/10 p-3">
+        <div class="text-sm font-semibold text-violet-800 dark:text-violet-200 mb-2">❓ รายการค้างเกิน <span data-forgot-h></span> ชม. (น่าจะลืมกดกลับ) — ไม่นับเป็นกำลังพัก กรุณาตรวจสอบและแก้ไขเวลากลับ</div>
+        <div id="forgotList" class="flex flex-wrap gap-2"></div>
+      </div>
+    </div>
 
     <div class="card p-5">
-      <h2 class="font-head font-semibold mb-3">💡 ข้อสังเกตอัตโนมัติ (Auto Insights)</h2>
+      <div class="mb-4"><div class="sec-h"><span class="sec-ic" style="--c1:#f59e0b;--c2:#ec4899">💡</span><div><div class="sec-t">ข้อสังเกตอัตโนมัติ</div><div class="sec-s">Auto Insights — สรุปประเด็นสำคัญจากข้อมูลช่วงที่เลือก</div></div></div></div>
       <ul id="insightList" class="grid md:grid-cols-2 gap-2"></ul>
     </div>
 
     <div class="grid lg:grid-cols-3 gap-5">
       <div class="card p-5 lg:col-span-2">
-        <h2 class="font-head font-semibold">⏰ ช่วงเวลาที่มีการพักมากที่สุด (Peak Break Hours)</h2>
-        <p class="text-xs text-slate-500 mb-3">แท่ง = จำนวนครั้งที่เริ่มพักในชั่วโมงนั้น • เส้น = จำนวนคนพักพร้อมกันเฉลี่ยต่อวัน</p>
+        <div class="mb-3"><div class="sec-h"><span class="sec-ic" style="--c1:#6366f1;--c2:#a855f7">⏰</span><div><div class="sec-t">ช่วงเวลาที่มีการพักมากที่สุด</div><div class="sec-s">แท่ง = ครั้งที่เริ่มพักในชั่วโมงนั้น • เส้น = คนพักพร้อมกันเฉลี่ย/วัน</div></div></div></div>
         <div class="h-72"><canvas id="chPeak"></canvas></div>
       </div>
       <div class="card p-5">
-        <h2 class="font-head font-semibold">🎯 ตรงเวลา vs เกินเวลา</h2>
-        <p class="text-xs text-slate-500 mb-3">นับเฉพาะรายการที่กลับจากพักแล้ว</p>
+        <div class="mb-3"><div class="sec-h"><span class="sec-ic" style="--c1:#10b981;--c2:#f43f5e">🎯</span><div><div class="sec-t">ตรงเวลา vs เกินเวลา</div><div class="sec-s">นับเฉพาะรายการที่กลับจากพักแล้ว</div></div></div></div>
         <div class="h-72 relative"><canvas id="chDonut"></canvas><div id="donutCenter" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8"></div></div>
       </div>
       <div class="card p-5">
-        <h2 class="font-head font-semibold">⚖️ ช่วงที่ 1 vs ช่วงที่ 2</h2>
-        <p class="text-xs text-slate-500 mb-3">จำนวนครั้ง • เฉลี่ย (นาที) • เกินเวลา (ครั้ง)</p>
+        <div class="mb-3"><div class="sec-h"><span class="sec-ic" style="--c1:#f59e0b;--c2:#0ea5e9">⚖️</span><div><div class="sec-t">ช่วงที่ 1 vs ช่วงที่ 2</div><div class="sec-s">จำนวนครั้ง • เฉลี่ย (นาที) • เกินเวลา</div></div></div></div>
         <div class="h-72"><canvas id="chCompare"></canvas></div>
       </div>
       <div class="card p-5 lg:col-span-2">
-        <h2 class="font-head font-semibold">📈 แนวโน้มรายวัน</h2>
-        <p class="text-xs text-slate-500 mb-3">จำนวนครั้ง / เกินเวลา และเวลาพักเฉลี่ยเทียบเกณฑ์</p>
+        <div class="mb-3"><div class="sec-h"><span class="sec-ic" style="--c1:#0ea5e9;--c2:#14b8a6">📈</span><div><div class="sec-t">แนวโน้มรายวัน</div><div class="sec-s">จำนวนครั้ง / เกินเวลา และเวลาเฉลี่ยเทียบเกณฑ์</div></div></div></div>
         <div class="h-72"><canvas id="chTrend"></canvas></div>
+      </div>
+    </div>
+
+    <!-- อันดับพนักงานที่พักเกินเวลา (ทั้งหมด) -->
+    <div class="card p-5">
+      <div class="flex flex-wrap items-center gap-3 mb-3">
+        <div class="mr-auto"><div class="sec-h"><span class="sec-ic" style="--c1:#f43f5e;--c2:#be123c">🚨</span><div><div class="sec-t">อันดับพนักงานที่พักเกินเวลา</div><div class="sec-s">เรียงจากจำนวนครั้งที่เกินมากสุด → เวลาที่เกินรวม • แตะชื่อเพื่อดูประวัติรายคน</div></div></div></div>
+        <div class="flex flex-wrap gap-1.5" id="sevChips"></div>
+      </div>
+      <div class="overflow-x-auto -mx-5 px-5">
+        <table class="w-full text-sm min-w-[860px]">
+          <thead class="th-soft text-left border-b border-slate-200 dark:border-slate-800"><tr>
+            <th class="py-2 pr-2">อันดับ</th><th class="py-2 pr-2">พนักงาน</th><th class="py-2 pr-2 text-center">พัก (ครั้ง)</th><th class="py-2 pr-2 text-center">เกิน (ครั้ง)</th>
+            <th class="py-2 pr-2">สัดส่วนที่เกิน</th><th class="py-2 pr-2 text-right">เกินรวม</th><th class="py-2 pr-2 text-right">เกินเฉลี่ย</th><th class="py-2 pr-2 text-right">เกินสูงสุด</th>
+            <th class="py-2 pr-2 text-center" title="≤5 / 5–10 / >10 นาที">ระดับ ≤5 / 5–10 / &gt;10</th><th class="py-2 pr-2">ครั้งล่าสุด</th></tr></thead>
+          <tbody id="rankBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-5">
+      <div class="card p-5">
+        <div class="mb-3"><div class="sec-h"><span class="sec-ic" style="--c1:#10b981;--c2:#f43f5e">📊</span><div><div class="sec-t">การกระจายของระยะเวลาพัก</div><div class="sec-s">จำนวนครั้งในแต่ละช่วงนาที • สีแดง = เกินเกณฑ์</div></div></div></div>
+        <div class="h-64"><canvas id="chHist"></canvas></div>
+      </div>
+      <div class="card p-5">
+        <div class="mb-3"><div class="sec-h"><span class="sec-ic" style="--c1:#8b5cf6;--c2:#0ea5e9">📅</span><div><div class="sec-t">เกินเวลาตามวันในสัปดาห์</div><div class="sec-s">จำนวนครั้งที่พัก และ % เกินเวลา แยกตามวัน</div></div></div></div>
+        <div class="h-64"><canvas id="chDow"></canvas></div>
       </div>
     </div>
 
     <div class="card p-5">
       <div class="flex flex-wrap items-center gap-3 mb-3">
-        <h2 class="font-head font-semibold mr-auto">📋 ประวัติการพักแบบละเอียด</h2>
+        <div class="mr-auto"><div class="sec-h"><span class="sec-ic" style="--c1:#64748b;--c2:#334155">📋</span><div><div class="sec-t">ประวัติการพักแบบละเอียด</div><div class="sec-s">ค้นหา • เรียงลำดับ • แก้ไขเวลากลับ • ลบ</div></div></div></div>
         <select id="tStatus" class="inp !py-1.5 !w-auto text-sm"><option value="">ทุกสถานะ</option><option value="active">กำลังพัก</option><option value="forgot">ลืมกดกลับ</option><option value="ontime">ตรงเวลา</option><option value="over">เกินเวลา</option></select>
         <select id="tBreak" class="inp !py-1.5 !w-auto text-sm"><option value="">ทุกช่วง</option><option value="1">ช่วงที่ 1</option><option value="2">ช่วงที่ 2</option></select>
         <select id="tSize" class="inp !py-1.5 !w-auto text-sm"><option>10</option><option selected>25</option><option>50</option><option>100</option></select>
       </div>
       <div class="overflow-x-auto -mx-5 px-5">
         <table class="w-full text-sm min-w-[900px]">
-          <thead class="text-left text-slate-500 border-b border-slate-200 dark:border-slate-800"><tr>
+          <thead class="th-soft text-left border-b border-slate-200 dark:border-slate-800"><tr>
             <th class="py-2 pr-2">#</th>
             <th class="sortable py-2 pr-2" data-sort="start">วันที่ / เวลาเริ่ม <span></span></th>
             <th class="sortable py-2 pr-2" data-sort="name">พนักงาน <span></span></th>
@@ -311,26 +437,26 @@
   <!-- ====================== TAB: ใบรายงาน ====================== -->
   <section id="tab-report" class="tab-panel hidden space-y-5">
     <div class="card p-5">
-      <h2 class="font-head font-semibold text-lg mb-3">📑 ออกใบรายงาน (A4)</h2>
+      <div class="mb-4"><div class="sec-h"><span class="sec-ic" style="--c1:#14b8a6;--c2:#6366f1">📑</span><div><div class="sec-t">ออกใบรายงาน (A4)</div><div class="sec-s">เลือกประเภทรายงาน แล้วกดสร้างเพื่อดูตัวอย่างก่อนดาวน์โหลด</div></div></div></div>
       <div class="grid sm:grid-cols-3 gap-3" id="rTypeSeg">
-        <button class="rtype" data-rtype="daily"><div class="text-2xl">📅</div><div class="font-head font-semibold">รายงานประจำวัน</div><div class="text-xs text-slate-500">รายชื่อทุกคน เวลาพักช่วง 1/2 ผลตรงเวลา/เกินเวลา</div></button>
-        <button class="rtype" data-rtype="weekly"><div class="text-2xl">🗓️</div><div class="font-head font-semibold">รายงานประจำสัปดาห์</div><div class="text-xs text-slate-500">จันทร์–อาทิตย์ สรุปรายวัน + รายบุคคล + เทียบสัปดาห์ก่อน</div></button>
-        <button class="rtype" data-rtype="monthly"><div class="text-2xl">📆</div><div class="font-head font-semibold">รายงานประจำเดือน</div><div class="text-xs text-slate-500">สรุปรายวัน/รายสัปดาห์/รายบุคคล + เทียบเดือนก่อน</div></button>
+        <button class="rtype" data-rtype="daily" style="--c1:#0ea5e9;--c2:#6366f1"><span class="sec-ic mb-2">📅</span><div class="font-head font-semibold">รายงานประจำวัน</div><div class="text-xs text-slate-500">รายชื่อทุกคน เวลาพักช่วง 1/2 ผลตรงเวลา/เกินเวลา</div></button>
+        <button class="rtype" data-rtype="weekly" style="--c1:#14b8a6;--c2:#22c55e"><span class="sec-ic mb-2">🗓️</span><div class="font-head font-semibold">รายงานประจำสัปดาห์</div><div class="text-xs text-slate-500">จันทร์–อาทิตย์ สรุปรายวัน + รายบุคคล + เทียบสัปดาห์ก่อน</div></button>
+        <button class="rtype" data-rtype="monthly" style="--c1:#a855f7;--c2:#ec4899"><span class="sec-ic mb-2">📆</span><div class="font-head font-semibold">รายงานประจำเดือน</div><div class="text-xs text-slate-500">สรุปรายวัน/รายสัปดาห์/รายบุคคล + เทียบเดือนก่อน</div></button>
       </div>
       <div class="flex flex-wrap items-end gap-3 mt-4">
         <div id="rDateBox"><label class="text-xs text-slate-500 block mb-1" id="rDateLabel">เลือกวันที่</label><input type="date" id="rDate" class="inp !py-2"></div>
         <div id="rMonthBox" class="hidden"><label class="text-xs text-slate-500 block mb-1">เลือกเดือน</label><input type="month" id="rMonth" class="inp !py-2"></div>
         <div class="min-w-[170px]"><label class="text-xs text-slate-500 block mb-1">แผนก</label><select id="rDept" class="inp !py-2"></select></div>
-        <div class="flex-1 min-w-[180px]"><label class="text-xs text-slate-500 block mb-1">ผู้จัดทำรายงาน (แสดงท้ายรายงาน)</label><input id="rBy" class="inp !py-2" placeholder="ชื่อ-นามสกุล ผู้จัดทำ" maxlength="60"></div>
+        <div class="flex-1 min-w-[180px]"><label class="text-xs text-slate-500 block mb-1">ผู้จัดทำรายงาน (ไม่บังคับ — แสดงที่ท้ายกระดาษ)</label><input id="rBy" class="inp !py-2" placeholder="ชื่อ-นามสกุล ผู้จัดทำ" maxlength="60"></div>
       </div>
       <p class="text-sm text-slate-500 mt-2" id="rRangeText"></p>
       <div class="flex flex-wrap gap-2 mt-4">
-        <button id="btnPreview" class="btn text-white bg-indigo-600 hover:bg-indigo-700">👁️ สร้าง/ดูตัวอย่างรายงาน</button>
+        <button id="btnPreview" class="btn btn-brand">👁️ สร้าง/ดูตัวอย่างรายงาน</button>
         <button id="btnRpPdf" class="btn btn-ghost" disabled>📑 ดาวน์โหลด PDF</button>
         <button id="btnRpJpg" class="btn btn-ghost" disabled>🖼️ ดาวน์โหลด JPEG</button>
       </div>
     </div>
-    <div class="card p-4 sm:p-6 bg-slate-200/60 dark:bg-slate-900">
+    <div class="card p-4 sm:p-6 !bg-slate-200/50 dark:!bg-slate-900/60">
       <div id="rpPreview"><div class="text-center text-slate-500 py-16">กด "สร้าง/ดูตัวอย่างรายงาน" เพื่อแสดงใบรายงาน</div></div>
     </div>
   </section>
@@ -339,17 +465,16 @@
   <section id="tab-emp" class="tab-panel hidden space-y-5">
     <div class="card p-5">
       <div class="flex flex-wrap items-center gap-2 mb-3">
-        <h2 class="font-head font-semibold text-lg mr-auto">👥 รายชื่อพนักงาน (<span id="empCount">0</span> คน)</h2>
+        <div class="mr-auto"><div class="sec-h"><span class="sec-ic" style="--c1:#0ea5e9;--c2:#8b5cf6">👥</span><div><div class="sec-t">รายชื่อพนักงาน (<span id="empCount">0</span> คน)</div><div class="sec-s">ชีต Employees — ใช้ร่วมกับแอปฟอร์มทุกเครื่อง</div></div></div></div>
         <label class="btn btn-ghost text-sm cursor-pointer">📗 นำเข้าจาก Excel<input type="file" id="empImport" accept=".xlsx,.xls,.csv" class="hidden"></label>
         <button id="btnEmpReload" class="btn btn-ghost text-sm">🔄 โหลดใหม่</button>
       </div>
-      <p class="text-xs text-slate-500 mb-3">รายชื่อเก็บในชีต "Employees" ของ Google Sheets และใช้ร่วมกันกับแอปฟอร์มแจ้งพักทุกเครื่อง</p>
       <form id="empAddForm" class="grid sm:grid-cols-6 gap-2 mb-4">
         <input id="eId" class="inp" placeholder="รหัสพนักงาน" required>
         <input id="eName" class="inp sm:col-span-2" placeholder="ชื่อ-นามสกุล" required>
         <input id="ePos" class="inp" placeholder="ตำแหน่ง">
         <input id="eDept" class="inp" placeholder="แผนก">
-        <button id="btnEmpSave" class="btn text-white bg-indigo-600 hover:bg-indigo-700">💾 บันทึก</button>
+        <button id="btnEmpSave" class="btn btn-brand">💾 บันทึก</button>
       </form>
       <input id="empFilter" class="inp mb-3" placeholder="ค้นหารายชื่อ...">
       <div class="overflow-x-auto"><table class="w-full text-sm min-w-[600px]"><thead class="text-left text-slate-500 border-b border-slate-200 dark:border-slate-800"><tr><th class="py-2">รหัส</th><th>ชื่อ-นามสกุล</th><th>ตำแหน่ง</th><th>แผนก</th><th class="text-right">จัดการ</th></tr></thead><tbody id="empTable"></tbody></table></div>
@@ -357,10 +482,10 @@
   </section>
 </main>
 
-<nav class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-slate-200 dark:border-slate-800 flex" style="padding-bottom: env(safe-area-inset-bottom)">
-  <button class="bnav flex-1 py-2.5 text-xs font-semibold text-slate-500" data-tab="overview"><div class="text-xl">📊</div>ภาพรวม</button>
-  <button class="bnav flex-1 py-2.5 text-xs font-semibold text-slate-500" data-tab="report"><div class="text-xl">📑</div>ใบรายงาน</button>
-  <button class="bnav flex-1 py-2.5 text-xs font-semibold text-slate-500" data-tab="emp"><div class="text-xl">👥</div>พนักงาน</button>
+<nav class="md:hidden fixed bottom-3 inset-x-3 z-30 glass rounded-3xl ring-1 ring-white/70 dark:ring-slate-700/60 shadow-2xl shadow-slate-900/15 flex p-1.5 gap-1" style="margin-bottom: env(safe-area-inset-bottom)">
+  <button class="bnav flex-1 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 rounded-2xl transition" data-tab="overview"><div class="text-xl">📊</div>ภาพรวม</button>
+  <button class="bnav flex-1 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 rounded-2xl transition" data-tab="report"><div class="text-xl">📑</div>ใบรายงาน</button>
+  <button class="bnav flex-1 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 rounded-2xl transition" data-tab="emp"><div class="text-xl">👥</div>พนักงาน</button>
 </nav>
 
 <!-- แก้ไขเวลากลับ / ปิดรายการลืมกดกลับ -->
@@ -375,7 +500,7 @@
     <input id="edNote" class="inp mb-3" maxlength="200" placeholder="เช่น พนักงานลืมกดกลับ ยืนยันเวลาจากกล้อง CCTV">
     <label class="text-sm font-semibold block mb-1">ผู้แก้ไข (จำเป็น)</label>
     <input id="edBy" class="inp mb-5" maxlength="60" placeholder="ชื่อหัวหน้างาน">
-    <div class="flex gap-2 justify-end"><button id="edCancel" class="btn btn-ghost">ยกเลิก</button><button id="edSave" class="btn text-white bg-indigo-600 hover:bg-indigo-700">💾 บันทึก</button></div>
+    <div class="flex gap-2 justify-end"><button id="edCancel" class="btn btn-ghost">ยกเลิก</button><button id="edSave" class="btn btn-brand">💾 บันทึก</button></div>
   </div>
 </div>
 
@@ -515,10 +640,10 @@ function normalizeRecord(r) {
    COMMON 4) TOAST / CONFIRM / LIGHTBOX / BUSY (แทน alert())
    ===================================================================== */
 function toast(msg, type = 'ok', ms = 3200) {
-  const color = { ok: 'bg-emerald-600', err: 'bg-red-600', warn: 'bg-amber-500', info: 'bg-slate-800' }[type] || 'bg-slate-800';
+  const color = { ok: 'bg-gradient-to-r from-emerald-500 to-teal-500', err: 'bg-gradient-to-r from-rose-500 to-red-600', warn: 'bg-gradient-to-r from-amber-500 to-orange-500', info: 'bg-gradient-to-r from-slate-700 to-slate-900' }[type] || 'bg-slate-800';
   const icon = { ok: '✅', err: '⛔', warn: '⚠️', info: 'ℹ️' }[type] || '';
   const el = document.createElement('div');
-  el.className = `toast pointer-events-auto ${color} text-white px-4 py-2.5 rounded-xl shadow-xl text-sm font-semibold max-w-md`;
+  el.className = `toast pointer-events-auto ${color} text-white px-4 py-2.5 rounded-2xl shadow-2xl ring-1 ring-white/20 text-sm font-semibold max-w-md`;
   el.textContent = `${icon} ${msg}`;
   $('#toastBox').appendChild(el);
   setTimeout(() => { el.style.transition = '.3s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, ms);
@@ -585,9 +710,33 @@ function clockWarning() {
     toast(`นาฬิกาเครื่องนี้คลาดเคลื่อน ${fmtDur(Math.abs(Clock.offset) / 1000)} — ระบบจะใช้เวลาจาก server แทนเพื่อความแม่นยำ`, 'warn', 7000);
 }
 
-// html2canvas จัดวางข้อความในเอกสารสำเนา (iframe) — ถ้าฟอนต์ไทยในสำเนายังโหลดไม่เสร็จ จะวัดตำแหน่งด้วยฟอนต์สำรอง
-// แต่วาดด้วย Sarabun/Prompt ทำให้ตัวอักษรเลื่อนลงทับเส้นตาราง → รอให้ฟอนต์ทุกน้ำหนักในสำเนาโหลดครบก่อน
-// และคืนค่า img เป็น inline-block (Tailwind preflight ตั้งเป็น block ซึ่งรบกวนการวัด baseline)
+// ---------- แก้ตัวอักษรในรูป/PDF ไม่อยู่กึ่งกลางบรรทัด ----------
+// html2canvas 1.4.1 คำนวณ baseline ด้วย <img> ชั่วคราว แล้ว "+2px" เผื่อไว้ (FontMetrics.parseMetrics)
+// ทำให้ข้อความถูกวาดต่ำกว่าตำแหน่งจริงในหน้าเว็บ (เห็นชัดกับฟอนต์ไทย Sarabun/Prompt และตอน scale 2)
+// วิธีแก้: ระหว่าง capture ดักคำสั่ง fillText แล้วเลื่อนข้อความขึ้นเท่ากับส่วนต่าง
+//   (baseline ที่ html2canvas ใช้) − (ascent จริงของฟอนต์จาก measureText) → ตำแหน่งตรงกับหน้าตัวอย่างทุกพิกเซล
+const _h2cDelta = {};
+function h2cBaselineDelta(ctx) {
+  const font = ctx.font; if (font in _h2cDelta) return _h2cDelta[font];
+  let d = 0;
+  try {
+    const m = font.match(/(\d+(?:\.\d+)?px)\s+(.+)$/);
+    if (m) {
+      // จำลองขั้นตอนเดียวกับ html2canvas เพื่อให้ได้ค่า baseline เดียวกันทุกประการ
+      const c = document.createElement('div'), img = document.createElement('img'), sp = document.createElement('span');
+      c.style.cssText = `visibility:hidden;font-family:${m[2]};font-size:${m[1]};margin:0;padding:0;white-space:nowrap;position:absolute;left:-9999px;top:0`;
+      img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; img.width = 1; img.height = 1;
+      img.style.cssText = 'margin:0;padding:0;vertical-align:baseline';
+      sp.style.cssText = `font-family:${m[2]};font-size:${m[1]};margin:0;padding:0`; sp.textContent = 'Hidden Text';
+      c.appendChild(sp); c.appendChild(img); document.body.appendChild(c);
+      const h2cBaseline = img.offsetTop - sp.offsetTop + 2; c.remove();
+      const asc = ctx.measureText('Hidden Text').fontBoundingBoxAscent;
+      if (asc > 0) d = h2cBaseline - asc;
+      if (!isFinite(d) || Math.abs(d) > 20) d = 0; // กันค่าผิดปกติ
+    }
+  } catch (e) { d = 0; }
+  return (_h2cDelta[font] = d);
+}
 const H2C_FIX = { onclone: async doc => {
   const s = doc.createElement('style'); s.textContent = 'img{display:inline-block}'; doc.head.appendChild(s);
   try {
@@ -595,12 +744,10 @@ const H2C_FIX = { onclone: async doc => {
     await doc.fonts.ready;
   } catch (e) { /* ไม่รองรับ FontFaceSet → ข้าม */ }
 } };
-
-// html2canvas วัด baseline ของฟอนต์ด้วย element ชั่วคราวใน <body> ของหน้าจริง ซึ่งรับ line-height 1.65 ของ body ไปด้วย
-// ทำให้คำนวณ baseline ต่ำเกินจริง → ตัวอักษรในรูป/PDF เลื่อนลงทับเส้นตาราง จึงตั้ง line-height:normal ชั่วคราวระหว่าง capture
 async function capture(el, opts) {
-  const b = document.body, prev = b.style.lineHeight; b.style.lineHeight = 'normal';
-  try { return await html2canvas(el, { ...opts, ...H2C_FIX }); } finally { b.style.lineHeight = prev; }
+  const P = CanvasRenderingContext2D.prototype, orig = P.fillText;
+  P.fillText = function (t, x, y, ...rest) { return orig.call(this, t, x, y - h2cBaselineDelta(this), ...rest); };
+  try { return await html2canvas(el, { ...opts, ...H2C_FIX }); } finally { P.fillText = orig; }
 }
 
 /* =====================================================================
@@ -830,6 +977,9 @@ function fillFilterOptions() {
    - เกินเวลา: ระยะเวลาจริง > เกณฑ์ของรายการนั้น (limitMin) ละเอียดระดับวินาที
    - ความแออัด: นาทีที่คนอยู่ในช่วงพักซ้อนทับแต่ละชั่วโมง ÷ 60 ÷ จำนวนวัน
    ===================================================================== */
+const HIST_BINS = [{ lbl: '≤30', hi: 30 }, { lbl: '30–35', hi: 35 }, { lbl: '35–40', hi: 40 }, { lbl: '40–45', hi: 45 }, { lbl: '45–50', hi: 50 }, { lbl: '50–55', hi: 55 }, { lbl: '>55', hi: Infinity }];
+const SEV_TH = ['เกิน ≤ 5 นาที', 'เกิน 5–10 นาที', 'เกิน > 10 นาที'];
+const sevIdx = ex => ex <= 300 ? 0 : ex <= 600 ? 1 : 2;
 function computeStats(rows, a, b) {
   rows = rows.map(r => ({ ...r, st: calcStatus(r) }));
   const done = rows.filter(r => r.end), durs = done.map(r => r.durationSec), over = done.filter(r => r.st === 'over');
@@ -844,16 +994,34 @@ function computeStats(rows, a, b) {
   const days = Math.round((b - a) / 86400000) + 1;
   const daily = {}; rows.forEach(r => (daily[r.date] ||= []).push(r));
   const perEmp = {};
-  rows.forEach(r => { const p = perEmp[r.empId] ||= { empId: r.empId, name: r.name, position: r.position, count: 0, done: 0, total: 0, max: 0, over: 0, overSec: 0, forgot: 0, days: new Set() };
-    p.count++; p.days.add(r.date); if (r.st === 'forgot') p.forgot++; if (r.end) { p.done++; p.total += r.durationSec; p.max = Math.max(p.max, r.durationSec); if (r.st === 'over') { p.over++; p.overSec += r.durationSec - recLimitSec(r); } } });
-  Object.values(perEmp).forEach(p => { p.avg = p.done ? p.total / p.done : 0; p.ontimePct = pct(p.done - p.over, p.done); p.dayCount = p.days.size; });
+  rows.forEach(r => { const p = perEmp[r.empId] ||= { empId: r.empId, name: r.name, position: r.position, count: 0, done: 0, total: 0, max: 0, over: 0, overSec: 0, overMax: 0, sev: [0, 0, 0], lastOver: '', forgot: 0, days: new Set() };
+    p.count++; p.days.add(r.date); if (r.st === 'forgot') p.forgot++;
+    if (r.end) { p.done++; p.total += r.durationSec; p.max = Math.max(p.max, r.durationSec);
+      if (r.st === 'over') { const ex = r.durationSec - recLimitSec(r); p.over++; p.overSec += ex; p.overMax = Math.max(p.overMax, ex); p.sev[sevIdx(ex)]++; if (r.start > p.lastOver) p.lastOver = r.start; } } });
+  Object.values(perEmp).forEach(p => { p.avg = p.done ? p.total / p.done : 0; p.ontimePct = pct(p.done - p.over, p.done); p.overPct = pct(p.over, p.done); p.overAvg = p.over ? p.overSec / p.over : 0; p.dayCount = p.days.size; });
+  // การกระจายระยะเวลาพัก (หน่วยนาที, ช่วงปิดขวา) — 45:00 พอดีอยู่ช่อง "40–45" = ตรงเวลา
+  const hist = HIST_BINS.map(() => 0); durs.forEach(d => { const m = d / 60; let i = HIST_BINS.findIndex(b => m <= b.hi); hist[i < 0 ? HIST_BINS.length - 1 : i]++; });
+  // ความรุนแรงของการเกินเวลา: ≤5 / 5–10 / >10 นาที
+  const sev = [0, 0, 0]; over.forEach(r => sev[sevIdx(r.durationSec - recLimitSec(r))]++);
+  // วันในสัปดาห์ (คำนวณจากวันที่จริง 0=อาทิตย์)
+  const dow = Array.from({ length: 7 }, () => ({ count: 0, done: 0, over: 0, sum: 0 }));
+  rows.forEach(r => { const d = dow[keyToDate(r.date).getDay()]; d.count++; if (r.end) { d.done++; d.sum += r.durationSec; if (r.st === 'over') d.over++; } });
+  // อัตราเกินเวลาตามชั่วโมงที่เริ่มพัก
+  const hourOver = Array.from({ length: 24 }, () => ({ done: 0, over: 0 })); done.forEach(r => { const h = hourOver[new Date(r.start).getHours()]; h.done++; if (r.st === 'over') h.over++; });
+  // ความครบถ้วน: พนักงาน-วัน ที่พักครบ 2 ช่วง / 1 ช่วง
+  // ไม่นับวันนี้ (กะยังไม่จบ อาจยังไม่ได้พักช่วงที่ 2) เพื่อไม่ให้สัดส่วนพักครบต่ำเกินจริง
+  const tk = dateKey(nowDate()), ed = {}; rows.filter(r => r.date !== tk).forEach(r => (ed[r.empId + '|' + r.date] ||= new Set()).add(r.breakNo));
+  const empDays = Object.values(ed), full = empDays.filter(x => x.size >= 2).length;
+  const edited = rows.filter(r => r.closedBy).length;
   return {
     rows, total: rows.length, people: new Set(rows.map(r => r.empId)).size, done: done.length,
     avg: durs.length ? durs.reduce((s, x) => s + x, 0) / durs.length : 0, median: median(durs), max: durs.length ? Math.max(...durs) : 0,
     over: over.length, overPeople: new Set(over.map(r => r.empId)).size, ontime: done.length - over.length,
     overExcessAvg: over.length ? over.reduce((s, r) => s + r.durationSec - recLimitSec(r), 0) / over.length : 0,
     active: rows.filter(r => r.st === 'active').length, forgot: rows.filter(r => r.st === 'forgot').length,
-    b1: by(1), b2: by(2), starts, occMin, occAvg: occMin.map(m => m / 60 / days), days, daily, perEmp
+    b1: by(1), b2: by(2), starts, occMin, occAvg: occMin.map(m => m / 60 / days), days, daily, perEmp,
+    hist, sev, dow, hourOver, empDays: empDays.length, full, single: empDays.length - full, edited,
+    overRank: Object.values(perEmp).filter(p => p.over > 0).sort((x, y) => y.over - x.over || y.overSec - x.overSec || x.empId.localeCompare(y.empId))
   };
 }
 // Δ เทียบช่วงก่อนหน้า (แสดงลูกศรขึ้น/ลง) — ค่าที่ "ลด" แล้วดี เช่น เกินเวลา จะใช้สีเขียวเมื่อลด
@@ -867,26 +1035,128 @@ function delta(cur, prev, unit = '', goodDown = false, dg = 0) {
 /* =====================================================================
    DASH 5) OVERVIEW — KPI / Insights / Charts
    ===================================================================== */
-function kpiCard(grad, icon, label, value, sub) {
-  return `<div class="rounded-2xl p-4 sm:p-5 text-white shadow-lg bg-gradient-to-br ${grad} relative overflow-hidden">
-    <div class="absolute -right-3 -top-3 text-6xl opacity-20 select-none">${icon}</div>
-    <div class="text-xs sm:text-sm font-semibold opacity-90">${label}</div>
-    <div class="font-head text-3xl sm:text-4xl font-bold mt-1 tabular-nums">${value}</div>
-    <div class="text-xs opacity-90 mt-1">${sub}</div></div>`;
+function kpiCard(grad, icon, label, value, sub, sh) {
+  return `<div class="kpi bg-gradient-to-br ${grad} fade-in" style="--sh:${sh}">
+    <div class="relative flex items-start justify-between gap-2"><div class="text-xs sm:text-sm font-semibold text-white/90">${label}</div><span class="kpi-ic">${icon}</span></div>
+    <div class="relative font-head text-3xl sm:text-4xl font-bold mt-1 tabular-nums drop-shadow-sm">${value}</div>
+    <div class="relative text-xs text-white/90 mt-1">${sub}</div></div>`;
+}
+/* ---------- LIVE MONITOR (Real-time รายบุคคล) ---------- */
+const AV_GRADS = [['#6366f1','#a855f7'],['#0ea5e9','#6366f1'],['#10b981','#0ea5e9'],['#f59e0b','#f43f5e'],['#ec4899','#8b5cf6'],['#14b8a6','#22c55e'],['#f97316','#eab308'],['#3b82f6','#06b6d4']];
+const avStyle = id => { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; const [a, b] = AV_GRADS[h % AV_GRADS.length]; return `background:linear-gradient(135deg,${a},${b})`; };
+// ระดับ: over = เกินเกณฑ์, soon = เหลือ ≤ WARN_MIN นาที, ok = ปกติ (ใช้เกณฑ์เดียวกับวงแหวนในแอปฟอร์ม)
+const lvLevel = r => { const el = elapsedSec(r), lim = recLimitSec(r); return el > lim ? 'over' : el >= lim - CONFIG.WARN_MIN * 60 ? 'soon' : 'ok'; };
+const LV_GRAD = { ok: ['#34d399', '#06b6d4'], soon: ['#fbbf24', '#f97316'], over: ['#fb7185', '#e11d48'] };
+let liveSig = '', liveAlerted = new Set();
+function liveRows() {
+  const act = live().filter(r => !r.end && matchPeople(r));
+  const now = act.filter(r => calcStatus(r) === 'active'), forgot = act.filter(r => calcStatus(r) === 'forgot');
+  // เรียงตามความเร่งด่วน: เกินมากสุดก่อน → เหลือเวลาน้อยสุด
+  now.sort((x, y) => (recLimitSec(x) - elapsedSec(x)) - (recLimitSec(y) - elapsedSec(y)));
+  return { now, forgot };
+}
+function renderLive() {
+  const { now, forgot } = liveRows();
+  liveSig = now.map(r => r.id + lvLevel(r)).join('|') + '#' + forgot.map(r => r.id).join('|');
+  const C = 2 * Math.PI * 26;
+  $('#liveList').innerHTML = now.length ? now.map(r => {
+    const el = Math.floor(elapsedSec(r)), lim = recLimitSec(r), lv = lvLevel(r), [g1, g2] = LV_GRAD[lv], p = Math.min(1, el / lim); // ปัดเศษวินาทีก่อน ให้ พักไป + เหลือ = 45:00 พอดี
+    const due = new Date(new Date(r.start).getTime() + lim * 1000).toISOString();
+    return `<div class="lv ${lv} fade-in ${lv === 'over' ? 'pulse-red' : ''}" data-lv="${r.id}">
+      <div class="flex items-center gap-3">
+        <div class="relative lv-ring"><svg viewBox="0 0 64 64" class="w-full h-full -rotate-90">
+          <defs><linearGradient id="lg${r.id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${g1}"/><stop offset="1" stop-color="${g2}"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="26" fill="none" stroke="rgba(148,163,184,.25)" stroke-width="7"/>
+          <circle data-ring cx="32" cy="32" r="26" fill="none" stroke="url(#lg${r.id})" stroke-width="7" stroke-linecap="round" stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="${(C * (1 - p)).toFixed(2)}" style="transition:stroke-dashoffset .9s linear"/></svg>
+          <span class="absolute inset-0 grid place-items-center"><span class="av !w-9 !h-9 !rounded-full text-sm" style="${avStyle(r.empId)}">${esc(initial(r.name))}</span></span></div>
+        <div class="min-w-0 flex-1">
+          <div class="font-semibold truncate">${esc(r.name)}</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 truncate">${esc(r.empId)} • ${r.breakNo === 1 ? '☕ ช่วงที่ 1' : '🍱 ช่วงที่ 2'}${r.device ? ' • ' + esc(r.device) : ''}</div>
+        </div>
+        <div class="text-right shrink-0">
+          <div class="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">พักไปแล้ว</div>
+          <div class="font-head text-2xl font-bold tabular-nums leading-tight ${lv === 'over' ? 'text-rose-600 dark:text-rose-400' : ''}" data-el>${fmtClock(el)}</div>
+        </div>
+      </div>
+      <div class="lv-bar mt-3"><i data-bar style="width:${(p * 100).toFixed(1)}%;background:linear-gradient(90deg,${g1},${g2})"></i></div>
+      <div class="flex items-center justify-between mt-2 text-xs">
+        <span class="text-slate-500 dark:text-slate-400">เริ่ม <b class="text-slate-700 dark:text-slate-200">${fmtTime(r.start)}</b> • ควรกลับ <b class="text-slate-700 dark:text-slate-200">${fmtTime(due)}</b> น.</span>
+        <span class="chip ${lv === 'over' ? 'chip-over' : lv === 'soon' ? 'bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200' : 'chip-ok'}" data-rem>${lv === 'over' ? 'เกิน ' + fmtClock(el - lim) : 'เหลือ ' + fmtClock(lim - el)}</span>
+      </div></div>`;
+  }).join('') : `<div class="sm:col-span-2 xl:col-span-3 text-center py-8"><div class="text-4xl mb-1">🌤️</div><div class="text-sm text-slate-500">ขณะนี้ไม่มีพนักงานที่กำลังพัก</div></div>`;
+  const cnt = l => now.filter(r => lvLevel(r) === l).length;
+  $('#lvActive').textContent = `กำลังพัก ${now.length} คน`; $('#lvSoon').textContent = `ใกล้ครบ ${cnt('soon')}`; $('#lvOver').textContent = `เกินเวลา ${cnt('over')}`;
+  $('[data-forgot-h]').textContent = CONFIG.FORGOT_H;
+  $('#forgotBox').classList.toggle('hidden', !forgot.length);
+  $('#forgotList').innerHTML = forgot.map(r => `<button class="btn btn-ghost !py-1.5 text-sm" data-fedit="${r.id}">✏️ ${esc(r.name)} • ช่วง ${r.breakNo} • เริ่ม ${fmtDateBE(r.date, true)} ${fmtTime(r.start)} น. (${fmtDur(elapsedSec(r))})</button>`).join('');
+  $$('[data-fedit]').forEach(b => b.onclick = () => openEdit(b.dataset.fedit));
+}
+// อัปเดตตัวเลขทุกวินาทีโดยไม่ render ใหม่ทั้งก้อน (ลื่นและประหยัดแบต) — render ใหม่เมื่อมีคนเปลี่ยนระดับ/เข้า-ออก
+function tickLive() {
+  if (state.tab !== 'overview' || Splash.mode) return;
+  const { now, forgot } = liveRows();
+  const sig = now.map(r => r.id + lvLevel(r)).join('|') + '#' + forgot.map(r => r.id).join('|');
+  if (sig !== liveSig) { renderLive(); renderKPIs(computeStats(filtered(), ...getRange())); }
+  const C = 2 * Math.PI * 26;
+  now.forEach(r => {
+    const box = document.querySelector(`[data-lv="${r.id}"]`); if (!box) return;
+    const el = Math.floor(elapsedSec(r)), lim = recLimitSec(r), p = Math.min(1, el / lim);
+    $('[data-el]', box).textContent = fmtClock(el);
+    $('[data-rem]', box).textContent = el > lim ? 'เกิน ' + fmtClock(el - lim) : 'เหลือ ' + fmtClock(lim - el);
+    $('[data-bar]', box).style.width = (p * 100).toFixed(1) + '%';
+    $('[data-ring]', box).setAttribute('stroke-dashoffset', (C * (1 - p)).toFixed(2));
+    if (el > lim && !liveAlerted.has(r.id)) { liveAlerted.add(r.id); if (state.liveReady) toast(`${r.name} พักเกิน ${r.limitMin} นาทีแล้ว`, 'warn', 6000); }
+  });
+}
+// ดึงเฉพาะข้อมูลเมื่อวาน–วันนี้ทุก 20 วินาที (เบากว่าโหลดทั้งช่วง) เพื่อให้สถานะกำลังพักตรงกับหน้างาน
+async function pullLive() {
+  if (state.loading || Splash.mode || document.hidden || state.tab !== 'overview') return;
+  const t = nowDate(), f = dateKey(addDays(t, -1)), to = dateKey(addDays(t, 1));
+  try {
+    const data = await jsonp({ action: 'list', from: f, to }, 20000);
+    if (!data || !data.ok) return;
+    for (const [id, r] of state.records) if (r.date >= f && r.date <= to) state.records.delete(id);
+    (data.records || []).forEach(x => { const r = normalizeRecord(x); if (r) state.records.set(r.id, r); });
+    setPill('ok', `● อัปเดต ${fmtTime(nowDate().toISOString())}`);
+    renderOverview();
+  } catch (e) { setPill('err', '● ออฟไลน์'); }
+}
+/* ---------- อันดับพนักงานที่พักเกินเวลา ---------- */
+function renderRank(st) {
+  const tone = (n) => n === 1 ? 'background:linear-gradient(135deg,#f43f5e,#be123c);color:#fff' : n === 2 ? 'background:linear-gradient(135deg,#fb923c,#ea580c);color:#fff' : n === 3 ? 'background:linear-gradient(135deg,#fbbf24,#d97706);color:#fff' : 'background:rgba(148,163,184,.2)';
+  $('#sevChips').innerHTML = st.over ? SEV_TH.map((t, i) => `<span class="chip ${['chip-active', 'bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200', 'chip-over'][i]}">${t}: ${fmtNum(st.sev[i])} ครั้ง</span>`).join('') : '';
+  $('#rankBody').innerHTML = st.overRank.length ? st.overRank.map((p, i) => `<tr class="border-b border-slate-100 dark:border-slate-800">
+    <td class="py-2 pr-2"><span class="rk" style="${tone(i + 1)}">${i + 1}</span></td>
+    <td class="py-2 pr-2"><button class="flex items-center gap-2 text-left hover:underline" data-who="${esc(p.empId)}"><span class="av !w-8 !h-8 !rounded-xl text-xs" style="${avStyle(p.empId)}">${esc(initial(p.name))}</span><span><span class="block font-semibold">${esc(p.name)}</span><span class="block text-xs text-slate-500">${esc(p.empId)}${p.position ? ' • ' + esc(p.position) : ''}</span></span></button></td>
+    <td class="py-2 pr-2 text-center tabular-nums">${fmtNum(p.done)}</td>
+    <td class="py-2 pr-2 text-center"><span class="chip chip-over !text-sm tabular-nums">${fmtNum(p.over)}</span></td>
+    <td class="py-2 pr-2 min-w-[140px]"><div class="flex items-center gap-2"><div class="lv-bar flex-1"><i style="width:${Math.min(100, p.overPct).toFixed(0)}%;background:linear-gradient(90deg,#fb923c,#e11d48)"></i></div><span class="text-xs tabular-nums w-12 text-right">${fmtNum(p.overPct, 1)}%</span></div></td>
+    <td class="py-2 pr-2 text-right tabular-nums font-semibold text-rose-600 dark:text-rose-400">${fmtMin(p.overSec)} น.</td>
+    <td class="py-2 pr-2 text-right tabular-nums">${fmtMin(p.overAvg)} น.</td>
+    <td class="py-2 pr-2 text-right tabular-nums">${fmtMin(p.overMax)} น.</td>
+    <td class="py-2 pr-2 text-center tabular-nums text-xs"><span class="text-amber-600">${p.sev[0]}</span> / <span class="text-orange-600">${p.sev[1]}</span> / <span class="text-rose-600 font-semibold">${p.sev[2]}</span></td>
+    <td class="py-2 pr-2 text-xs whitespace-nowrap">${p.lastOver ? fmtDateBE(dateKey(new Date(p.lastOver)), true) + ' ' + fmtTime(p.lastOver) : '-'}</td></tr>`).join('')
+    : `<tr><td colspan="10" class="py-10 text-center"><div class="text-4xl mb-1">🏆</div><div class="text-sm text-slate-500">ไม่มีพนักงานที่พักเกินเวลาในช่วงที่เลือก</div></td></tr>`;
+  $$('[data-who]', $('#rankBody')).forEach(b => b.onclick = () => { state.filter.q = b.dataset.who; $('#fSearch').value = b.dataset.who; state.table.page = 1; renderOverview(); $('#tBody').closest('.card').scrollIntoView({ behavior: 'smooth', block: 'start' }); toast(`กรองประวัติเฉพาะรหัส ${b.dataset.who} — ล้างช่องค้นหาเพื่อดูทั้งหมด`, 'info'); });
 }
 function renderKPIs(st) {
   // "กำลังพักขณะนี้" เป็นสถานะสด ไม่ขึ้นกับช่วงวันที่ (แต่เคารพตัวกรองแผนก/ตำแหน่ง/ชื่อ)
   const act = live().filter(r => !r.end && matchPeople(r)), actNow = act.filter(r => calcStatus(r) === 'active');
   const actOver = actNow.filter(r => elapsedSec(r) > recLimitSec(r)).length, forgot = act.length - actNow.length;
   $('#kpiGrid').innerHTML =
-    kpiCard('from-indigo-500 to-violet-600', '👥', 'พนักงานที่พัก', fmtNum(st.people), `คน • รวม ${fmtNum(st.total)} ครั้ง`) +
-    kpiCard('from-amber-400 to-orange-500', '⏳', 'กำลังพักอยู่ขณะนี้', fmtNum(actNow.length), actOver ? `⚠️ เกินเวลาแล้ว ${actOver} คน` : (forgot ? `❓ ลืมกดกลับ ${forgot} รายการ` : 'อัปเดตแบบ Real-time')) +
-    kpiCard('from-emerald-500 to-teal-600', '⏱️', 'เวลาพักเฉลี่ยต่อครั้ง', st.done ? fmtMin(st.avg) : '-', st.done ? `นาที • มัธยฐาน ${fmtMin(st.median)} นาที` : 'ยังไม่มีรายการที่กลับจากพัก') +
-    kpiCard('from-rose-500 to-red-600', '🚨', `พักเกินเวลา (> ${CONFIG.LIMIT_MIN} นาที)`, fmtNum(st.overPeople), `คน • ${fmtNum(st.over)} ครั้ง (${fmtNum(pct(st.over, st.done), 1)}%)`);
-  const mini = (l, v, c = '') => `<div class="card p-3"><div class="text-xs text-slate-500">${l}</div><div class="font-head text-xl font-semibold ${c}">${v}</div></div>`;
-  $('#miniGrid').innerHTML = mini('อัตราตรงเวลา', st.done ? fmtNum(pct(st.ontime, st.done), 1) + '%' : '-', 'text-emerald-600') + mini('พักนานสุด', st.done ? fmtMin(st.max) + ' น.' : '-')
-    + mini('เกินเฉลี่ย (เฉพาะที่เกิน)', st.over ? fmtMin(st.overExcessAvg) + ' น.' : '-', 'text-red-600') + mini('ช่วงที่ 1 เฉลี่ย', st.b1.done ? fmtMin(st.b1.avg) + ' น.' : '-')
-    + mini('ช่วงที่ 2 เฉลี่ย', st.b2.done ? fmtMin(st.b2.avg) + ' น.' : '-') + mini('ลืมกดกลับ', fmtNum(st.forgot) + ' รายการ', st.forgot ? 'text-violet-600' : '');
+    kpiCard('from-indigo-500 via-violet-500 to-purple-600', '👥', 'พนักงานที่พัก', fmtNum(st.people), `คน • รวม ${fmtNum(st.total)} ครั้ง`, '#7c3aed') +
+    kpiCard('from-amber-400 via-orange-500 to-rose-500', '⏳', 'กำลังพักอยู่ขณะนี้', fmtNum(actNow.length), actOver ? `⚠️ เกินเวลาแล้ว ${actOver} คน` : (forgot ? `❓ ลืมกดกลับ ${forgot} รายการ` : 'อัปเดตแบบ Real-time'), '#f97316') +
+    kpiCard('from-emerald-400 via-teal-500 to-cyan-600', '⏱️', 'เวลาพักเฉลี่ยต่อครั้ง', st.done ? fmtMin(st.avg) : '-', st.done ? `นาที • มัธยฐาน ${fmtMin(st.median)} นาที` : 'ยังไม่มีรายการที่กลับจากพัก', '#0d9488') +
+    kpiCard('from-rose-500 via-red-500 to-pink-600', '🚨', `พักเกินเวลา (> ${CONFIG.LIMIT_MIN} นาที)`, fmtNum(st.overPeople), `คน • ${fmtNum(st.over)} ครั้ง (${fmtNum(pct(st.over, st.done), 1)}%)`, '#e11d48');
+  const mini = (l, v, c = '', mc = '#94a3b8', ic = '') => `<div class="card mini p-3.5 fade-in" style="--mc:${mc}"><div class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">${ic} ${l}</div><div class="font-head text-xl font-semibold ${c}">${v}</div></div>`;
+  $('#miniGrid').innerHTML = mini('อัตราตรงเวลา', st.done ? fmtNum(pct(st.ontime, st.done), 1) + '%' : '-', 'text-emerald-600 dark:text-emerald-400', '#10b981', '✅')
+    + mini('พักนานสุด', st.done ? fmtMin(st.max) + ' น.' : '-', '', '#f59e0b', '🐢')
+    + mini('เกินเฉลี่ย (เฉพาะที่เกิน)', st.over ? fmtMin(st.overExcessAvg) + ' น.' : '-', 'text-rose-600 dark:text-rose-400', '#f43f5e', '⏫')
+    + mini('ช่วงที่ 1 เฉลี่ย', st.b1.done ? fmtMin(st.b1.avg) + ' น.' : '-', '', '#f59e0b', '☕')
+    + mini('ช่วงที่ 2 เฉลี่ย', st.b2.done ? fmtMin(st.b2.avg) + ' น.' : '-', '', '#0ea5e9', '🍱')
+    + mini('ลืมกดกลับ', fmtNum(st.forgot) + ' รายการ', st.forgot ? 'text-violet-600 dark:text-violet-400' : '', '#8b5cf6', '❓')
+    + mini('พักครบ 2 ช่วง (ไม่รวมวันนี้)', st.empDays ? `${fmtNum(pct(st.full, st.empDays), 1)}% <span class="text-xs font-normal text-slate-500">(${fmtNum(st.full)}/${fmtNum(st.empDays)})</span>` : '-', 'text-sky-700 dark:text-sky-300', '#0ea5e9', '🧮')
+    + mini('แก้ไขโดยหัวหน้า', fmtNum(st.edited) + ' รายการ', '', '#64748b', '✏️');
 }
 function buildInsights(st, opt = {}) {
   const out = [], lim = CONFIG.LIMIT_MIN;
@@ -902,6 +1172,13 @@ function buildInsights(st, opt = {}) {
   if (done.length) { const L = done.reduce((x, y) => (y.durationSec > x.durationSec ? y : x)); out.push(['🐢', `พักนานที่สุด: ${L.name} ${fmtDur(L.durationSec)} (ช่วงที่ ${L.breakNo}, ${fmtDateBE(L.date, true)})`, L.st === 'over' ? 'red' : 'slate']); }
   const rep = Object.values(st.perEmp).filter(p => p.over >= 2).sort((x, y) => y.over - x.over);
   if (rep.length) out.push(['🔁', `พักเกินเวลาซ้ำ ≥ 2 ครั้ง: ${rep.slice(0, 3).map(p => `${p.name} (${p.over})`).join(', ')}${rep.length > 3 ? ` และอีก ${rep.length - 3} คน` : ''}`, 'red']);
+  if (st.over) out.push(['📐', `ระดับการเกินเวลา: ${SEV_TH.map((t, i) => `${t} ${fmtNum(st.sev[i])} ครั้ง`).join(' • ')}`, st.sev[2] ? 'red' : 'amber']);
+  { const hs = st.hourOver.map((h, i) => ({ i, ...h, p: pct(h.over, h.done) })).filter(h => h.done >= 3).sort((x, y) => y.p - x.p)[0];
+    if (hs && hs.over) out.push(['🕐', `เริ่มพักช่วง ${pad(hs.i)}:00–${pad((hs.i + 1) % 24)}:00 น. มีอัตราเกินเวลาสูงสุด ${fmtNum(hs.p, 1)}% (${hs.over}/${hs.done} ครั้ง)`, 'amber']); }
+  if (st.days >= 7) { const ds = st.dow.map((d, i) => ({ i, ...d, p: pct(d.over, d.done) })).filter(d => d.done >= 3).sort((x, y) => y.p - x.p);
+    if (ds.length >= 2 && ds[0].over) out.push(['📅', `วัน${TH_DAYS[ds[0].i]}มีอัตราเกินเวลาสูงสุด ${fmtNum(ds[0].p, 1)}% • ต่ำสุดคือวัน${TH_DAYS[ds[ds.length - 1].i]} ${fmtNum(ds[ds.length - 1].p, 1)}%`, 'indigo']); }
+  if (st.empDays) out.push(['🧮', `พักครบ 2 ช่วง ${fmtNum(st.full)} จาก ${fmtNum(st.empDays)} คน-วัน (ไม่รวมวันนี้) (${fmtNum(pct(st.full, st.empDays), 1)}%) • พักเพียงช่วงเดียว ${fmtNum(st.single)} คน-วัน`, st.single ? 'sky' : 'emerald']);
+  if (st.edited) out.push(['✏️', `มีรายการที่หัวหน้างานแก้ไขเวลากลับ ${fmtNum(st.edited)} รายการ (ตรวจสอบเหตุผลได้ในตาราง)`, 'slate']);
   if (st.forgot) out.push(['❓', `มี ${st.forgot} รายการที่ค้างเกิน ${CONFIG.FORGOT_H} ชม. (น่าจะลืมกดกลับ) — ควรตรวจสอบและแก้ไขเวลากลับ`, 'violet']);
   if (opt.roster) { const took = new Set(st.rows.map(r => r.empId)); const none = opt.roster.filter(e => !took.has(e.id));
     out.push(['📝', `ไม่มีบันทึกการพัก ${fmtNum(none.length)} จาก ${fmtNum(opt.roster.length)} คน (อาจเป็นวันหยุด/ไม่ได้เข้าเวร หรือไม่ได้ลงเวลา)`, 'slate']); }
@@ -912,7 +1189,7 @@ function renderInsights(st) {
   const tone = { emerald: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/40', amber: 'border-amber-400 bg-amber-50 dark:bg-amber-950/40', red: 'border-red-400 bg-red-50 dark:bg-red-950/40', indigo: 'border-indigo-400 bg-indigo-50 dark:bg-indigo-950/40', sky: 'border-sky-400 bg-sky-50 dark:bg-sky-950/40', violet: 'border-violet-400 bg-violet-50 dark:bg-violet-950/40', slate: 'border-slate-300 bg-slate-50 dark:bg-slate-800/50' };
   const [a, b] = getRange(), today = dateKey(nowDate());
   const roster = dateKey(a) === today && dateKey(b) === today ? state.employees.filter(e => matchPeople({ ...e, empId: e.id })) : null;
-  $('#insightList').innerHTML = buildInsights(st, { roster }).map(([i, t, c]) => `<li class="border-l-4 ${tone[c]} rounded-r-xl px-3 py-2 text-sm flex gap-2"><span>${i}</span><span>${esc(t)}</span></li>`).join('');
+  $('#insightList').innerHTML = buildInsights(st, { roster }).map(([i, t, c]) => `<li class="border-l-4 ${tone[c]} rounded-xl px-3.5 py-2.5 text-sm flex gap-2 fade-in"><span>${i}</span><span>${esc(t)}</span></li>`).join('');
 }
 const chartTheme = light => light || !isDark() ? { text: '#475569', grid: 'rgba(148,163,184,.25)' } : { text: '#cbd5e1', grid: 'rgba(148,163,184,.12)' };
 function mkChart(id, cfg) { if (typeof Chart === 'undefined') return; if (state.charts[id]) state.charts[id].destroy(); state.charts[id] = new Chart($('#' + id), cfg); }
@@ -927,26 +1204,36 @@ function chartConfigs(st, a, b, light) {
   const hasDone = st.done > 0;
   return {
     chPeak: { type: 'bar', data: { labels: hrs.map(h => `${pad(h)}:00`), datasets: [
-      { label: 'เริ่มพักช่วงที่ 1', data: hrs.map(h => st.starts[1][h]), backgroundColor: '#6366f1', borderRadius: 6, stack: 's', yAxisID: 'y' },
-      { label: 'เริ่มพักช่วงที่ 2', data: hrs.map(h => st.starts[2][h]), backgroundColor: '#a78bfa', borderRadius: 6, stack: 's', yAxisID: 'y' },
-      { type: 'line', label: 'คนพักพร้อมกัน (เฉลี่ย/วัน)', data: hrs.map(h => +st.occAvg[h].toFixed(2)), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.15)', fill: true, tension: .35, pointRadius: 3, yAxisID: 'y1' }] },
+      { label: 'เริ่มพักช่วงที่ 1', data: hrs.map(h => st.starts[1][h]), backgroundColor: '#f59e0b', borderRadius: 8, stack: 's', yAxisID: 'y' },
+      { label: 'เริ่มพักช่วงที่ 2', data: hrs.map(h => st.starts[2][h]), backgroundColor: '#0ea5e9', borderRadius: 8, stack: 's', yAxisID: 'y' },
+      { type: 'line', label: 'คนพักพร้อมกัน (เฉลี่ย/วัน)', data: hrs.map(h => +st.occAvg[h].toFixed(2)), borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,.14)', fill: true, tension: .35, pointRadius: 3, yAxisID: 'y1' }] },
       options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend },
         scales: { x: sc({ stacked: true }), y: sc({ stacked: true, beginAtZero: true, ticks: { precision: 0, color: th.text }, title: { display: true, text: 'ครั้ง', color: th.text } }),
           y1: sc({ position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'คน', color: th.text } }) } } },
-    chDonut: { type: 'doughnut', data: { labels: ['ตรงเวลา', 'เกินเวลา'], datasets: [{ data: hasDone ? [st.ontime, st.over] : [1, 0], backgroundColor: hasDone ? ['#10b981', '#ef4444'] : [th.grid, th.grid], borderWidth: 0 }] },
+    chDonut: { type: 'doughnut', data: { labels: ['ตรงเวลา', 'เกินเวลา'], datasets: [{ data: hasDone ? [st.ontime, st.over] : [1, 0], backgroundColor: hasDone ? ['#10b981', '#f43f5e'] : [th.grid, th.grid], borderWidth: 0, hoverOffset: 8, borderRadius: 6, spacing: 2 }] },
       options: { maintainAspectRatio: false, cutout: '68%', plugins: { legend, tooltip: { enabled: hasDone, callbacks: { label: c => ` ${c.label}: ${fmtNum(c.raw)} ครั้ง (${fmtNum(pct(c.raw, st.done), 1)}%)` } } } } },
     chCompare: { type: 'bar', data: { labels: ['จำนวนครั้ง', 'เฉลี่ย (นาที)', 'เกินเวลา'], datasets: [
-      { label: 'ช่วงที่ 1', data: [st.b1.count, +(st.b1.avg / 60).toFixed(1), st.b1.over], backgroundColor: '#6366f1', borderRadius: 6 },
-      { label: 'ช่วงที่ 2', data: [st.b2.count, +(st.b2.avg / 60).toFixed(1), st.b2.over], backgroundColor: '#a78bfa', borderRadius: 6 }] },
+      { label: 'ช่วงที่ 1', data: [st.b1.count, +(st.b1.avg / 60).toFixed(1), st.b1.over], backgroundColor: '#f59e0b', borderRadius: 8 },
+      { label: 'ช่วงที่ 2', data: [st.b2.count, +(st.b2.avg / 60).toFixed(1), st.b2.over], backgroundColor: '#0ea5e9', borderRadius: 8 }] },
       options: { maintainAspectRatio: false, plugins: { legend }, scales: { x: sc(), y: sc({ beginAtZero: true }) } } },
     chTrend: { type: 'bar', data: { labels: days.map(k => { const d = keyToDate(k); return days.length > 10 ? String(d.getDate()) : `${TH_DAYS_S[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`; }), datasets: [
-      { label: 'จำนวนครั้ง', data: days.map(k => (st.daily[k] || []).length), backgroundColor: '#38bdf8', borderRadius: 5, yAxisID: 'y' },
-      { label: 'เกินเวลา', data: days.map(k => (st.daily[k] || []).filter(r => r.st === 'over').length), backgroundColor: '#f87171', borderRadius: 5, yAxisID: 'y' },
-      { type: 'line', label: 'เฉลี่ย (นาที)', data: days.map(k => { const d = (st.daily[k] || []).filter(r => r.end); return d.length ? +(d.reduce((s, r) => s + r.durationSec, 0) / d.length / 60).toFixed(1) : null; }), borderColor: '#10b981', tension: .3, pointRadius: 3, spanGaps: true, yAxisID: 'y1' },
+      { label: 'จำนวนครั้ง', data: days.map(k => (st.daily[k] || []).length), backgroundColor: '#14b8a6', borderRadius: 6, yAxisID: 'y' },
+      { label: 'เกินเวลา', data: days.map(k => (st.daily[k] || []).filter(r => r.st === 'over').length), backgroundColor: '#f43f5e', borderRadius: 6, yAxisID: 'y' },
+      { type: 'line', label: 'เฉลี่ย (นาที)', data: days.map(k => { const d = (st.daily[k] || []).filter(r => r.end); return d.length ? +(d.reduce((s, r) => s + r.durationSec, 0) / d.length / 60).toFixed(1) : null; }), borderColor: '#6366f1', tension: .3, pointRadius: 3, spanGaps: true, yAxisID: 'y1' },
       { type: 'line', label: `เกณฑ์ ${CONFIG.LIMIT_MIN} นาที`, data: days.map(() => CONFIG.LIMIT_MIN), borderColor: '#ef4444', borderDash: [6, 4], pointRadius: 0, yAxisID: 'y1' }] },
       options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend },
         scales: { x: sc(), y: sc({ beginAtZero: true, ticks: { precision: 0, color: th.text }, title: { display: true, text: 'ครั้ง', color: th.text } }),
-          y1: sc({ position: 'right', beginAtZero: true, suggestedMax: CONFIG.LIMIT_MIN + 10, grid: { drawOnChartArea: false }, title: { display: true, text: 'นาที', color: th.text } }) } } }
+          y1: sc({ position: 'right', beginAtZero: true, suggestedMax: CONFIG.LIMIT_MIN + 10, grid: { drawOnChartArea: false }, title: { display: true, text: 'นาที', color: th.text } }) } } },
+    chHist: { type: 'bar', data: { labels: HIST_BINS.map(b => b.lbl + ' น.'), datasets: [{ label: 'จำนวนครั้ง', data: st.hist,
+      backgroundColor: HIST_BINS.map(b => b.hi <= CONFIG.LIMIT_MIN ? (b.hi <= 40 ? '#34d399' : '#10b981') : (b.hi <= 50 ? '#fb923c' : b.hi <= 55 ? '#f43f5e' : '#be123c')), borderRadius: 8 }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${fmtNum(c.raw)} ครั้ง (${fmtNum(pct(c.raw, st.done), 1)}%)` } } },
+        scales: { x: sc(), y: sc({ beginAtZero: true, ticks: { precision: 0, color: th.text } }) } } },
+    chDow: { type: 'bar', data: { labels: [1, 2, 3, 4, 5, 6, 0].map(i => TH_DAYS[i]), datasets: [
+      { label: 'จำนวนครั้ง', data: [1, 2, 3, 4, 5, 6, 0].map(i => st.dow[i].count), backgroundColor: '#818cf8', borderRadius: 8, yAxisID: 'y' },
+      { type: 'line', label: '% เกินเวลา', data: [1, 2, 3, 4, 5, 6, 0].map(i => st.dow[i].done ? +pct(st.dow[i].over, st.dow[i].done).toFixed(1) : null), borderColor: '#f43f5e', backgroundColor: '#f43f5e', tension: .3, pointRadius: 4, spanGaps: true, yAxisID: 'y1' }] },
+      options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend },
+        scales: { x: sc(), y: sc({ beginAtZero: true, ticks: { precision: 0, color: th.text }, title: { display: true, text: 'ครั้ง', color: th.text } }),
+          y1: sc({ position: 'right', beginAtZero: true, suggestedMax: 50, grid: { drawOnChartArea: false }, ticks: { color: th.text, callback: v => v + '%' } }) } } }
   };
 }
 function renderCharts(st) {
@@ -991,11 +1278,11 @@ function renderTable() {
     return `<tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40">
       <td class="py-2 pr-2 text-slate-400">${(t.page - 1) * t.size + i + 1}</td>
       <td class="py-2 pr-2 whitespace-nowrap"><div>${fmtDateBE(r.date, true)}</div><div class="text-xs text-slate-500">${fmtTimeS(r.start)} น.</div></td>
-      <td class="py-2 pr-2"><div class="font-semibold">${esc(r.name)}</div><div class="text-xs text-slate-500">${esc(r.empId)} • ${esc(r.position)}</div></td>
+      <td class="py-2 pr-2"><div class="font-semibold">${esc(r.name)}</div><div class="text-xs text-slate-500">${esc(r.empId)}${r.position ? " • " + esc(r.position) : ""}</div></td>
       <td class="py-2 pr-2 whitespace-nowrap">ช่วงที่ ${r.breakNo}</td>
       <td class="py-2 pr-2 whitespace-nowrap">${r.end ? fmtTimeS(r.end) + ' น.' : '—'}${r.closedBy ? `<div class="text-[11px] text-violet-600" title="${esc(r.note)}">แก้ไขโดย ${esc(r.closedBy)}</div>` : ''}</td>
       <td class="py-2 pr-2 text-right whitespace-nowrap tabular-nums ${r.st === 'over' ? 'text-red-600 font-semibold' : ''}">${r.end ? fmtDur(r.durationSec) : `<span class="text-amber-600">${fmtClock(elapsedSec(r))}</span>`}</td>
-      <td class="py-2 pr-2"><span class="chip ${STATUS_CHIP[r.st]}">${STATUS_TH[r.st]}</span></td>
+      <td class="py-2 pr-2">${r.st === 'active' && elapsedSec(r) > recLimitSec(r) ? '<span class="chip chip-over">กำลังพัก • เกินแล้ว</span>' : `<span class="chip ${STATUS_CHIP[r.st]}">${STATUS_TH[r.st]}</span>`}</td>
       <td class="py-2 pr-2"><div class="flex gap-1">${ph.length ? ph.map(s => `<img src="${esc(s)}" referrerpolicy="no-referrer" loading="lazy" class="w-10 h-10 object-cover rounded-lg cursor-zoom-in border border-slate-200 dark:border-slate-700" data-zoom alt="รูปแนบ">`).join('') : '<span class="text-slate-400 text-xs">ไม่มี</span>'}</div></td>
       <td class="py-2 text-right whitespace-nowrap"><button class="btn btn-ghost !p-1.5 text-xs" data-slip="${r.id}" title="ดูสลิป">🧾</button> <button class="btn btn-ghost !p-1.5 text-xs" data-edit="${r.id}" title="แก้ไขเวลากลับ / ปิดรายการ">✏️</button> <button class="btn btn-ghost !p-1.5 text-xs" data-del="${r.id}" title="ลบ">🗑️</button></td></tr>`;
   }).join('') : `<tr><td colspan="9" class="py-10 text-center text-slate-500">📭 ไม่มีข้อมูลตามเงื่อนไขที่เลือก</td></tr>`;
@@ -1031,11 +1318,13 @@ function openEdit(id) {
   $('#edEnd').value = toLocalInput(def); $('#edNote').value = r.end ? (r.note || '') : 'ลืมกดกลับจากพัก'; $('#edBy').value = localStorage.getItem('sbk_break_editor') || '';
   updEditDur(); $('#editModal').classList.remove('hidden');
 }
-function updEditDur() { const r = state.records.get(editId); const e = new Date($('#edEnd').value); if (!r || isNaN(e)) { $('#edDur').textContent = ''; return; }
+// ช่องเวลาเก็บถึงวินาที แต่เวลาเริ่มอาจมีเศษมิลลิวินาที (ข้อมูลเก่า) → บวกเศษเดิมกลับ ให้ระยะเวลา = ส่วนต่างของเวลาที่เห็นบนจอพอดี
+const editEnd = r => { const e = new Date($('#edEnd').value); return isNaN(e) ? e : new Date(e.getTime() + new Date(r.start).getMilliseconds()); };
+function updEditDur() { const r = state.records.get(editId); const e = r ? editEnd(r) : new Date(NaN); if (!r || isNaN(e)) { $('#edDur').textContent = ''; return; }
   const s = (e - new Date(r.start)) / 1000; $('#edDur').textContent = s < 0 ? '⛔ เวลากลับต้องไม่น้อยกว่าเวลาเริ่ม' : `ระยะเวลาพักจะเป็น ${fmtDur(s)} → ${s > recLimitSec(r) ? 'เกินเวลา' : 'ตรงเวลา'}`; }
 async function saveEdit() {
   const r = state.records.get(editId), btn = $('#edSave'); if (!r) return;
-  const e = new Date($('#edEnd').value), note = $('#edNote').value.trim(), by = $('#edBy').value.trim();
+  const e = editEnd(r), note = $('#edNote').value.trim(), by = $('#edBy').value.trim();
   if (isNaN(e)) return toast('กรุณาระบุเวลากลับจากพัก', 'warn');
   if (e < new Date(r.start)) return toast('เวลากลับต้องไม่น้อยกว่าเวลาเริ่มพัก', 'err');
   if (e > nowDate()) return toast('เวลากลับต้องไม่เกินเวลาปัจจุบัน', 'err');
@@ -1069,7 +1358,7 @@ function doExport(kind) {
   $('#exportMenu').classList.add('hidden');
   const rows = tableRows(); if (!rows.length) return toast('ไม่มีข้อมูลสำหรับ Export ในช่วงที่เลือก', 'warn');
   try {
-    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v2', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
+    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v5', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
     else if (kind === 'csv') {
       const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       const lines = [EXPORT_COLS.map(c => q(c[1])).join(','), ...rows.map(r => { const o = exportRow(r); return EXPORT_COLS.map(c => q(o[c[0]])).join(','); })];
@@ -1165,17 +1454,13 @@ function chartsBlock(items) { // items: [title, img, width]
 }
 function insightsBlock(st, opt) { return blk(`<div><div class="rp-sec">ข้อสังเกตและการวิเคราะห์</div><ul class="rp-ins">${buildInsights(st, opt).map(([i, t]) => `<li>${i} ${esc(t)}</li>`).join('')}</ul></div>`); }
 function noteBlock() { return blk(`<div class="rp-note"><b>นิยามและเงื่อนไข:</b> เกินเวลา = ระยะเวลาพักจริงมากกว่า ${CONFIG.LIMIT_MIN}:00 นาที (คิดละเอียดระดับวินาที ตามเกณฑ์ที่บันทึกไว้กับแต่ละรายการ) • ค่าเฉลี่ย/มัธยฐาน/สูงสุด คำนวณจากรายการที่กลับจากพักแล้วเท่านั้น • "ลืมกดกลับ" = ค้างเกิน ${CONFIG.FORGOT_H} ชม. ไม่นำมาคำนวณ • เวลาบันทึกอ้างอิงนาฬิกา server • ข้อมูลจาก Google Sheets ณ เวลาออกรายงาน</div>`); }
-function signBlock() {
-  const by = $('#rBy').value.trim();
-  return blk(`<div class="rp-sign">${[['ผู้จัดทำ', by], ['หัวหน้างาน', ''], ['ผู้จัดการฝ่าย', '']].map(([r, n]) => `<div><div style="height:34px"></div>ลงชื่อ ......................................................<br>( ${n ? esc(n) : '......................................................'} )<br><b>${r}</b><br>วันที่ ........./........./.........</div>`).join('')}</div>`);
-}
 function newPage(host, meta) {
   const p = blk(`<div class="rp-page">
     <div class="rp-head"><img src="${LOGO_SRC}" style="height:40px">
       <div style="flex:1"><div class="t1">${esc(meta.title)}</div><div class="t2">${esc(CONFIG.ORG)} • แผนก${esc(meta.dept)} • ${esc(meta.label)}</div></div>
       <div style="text-align:right;font-size:11px;color:#475569">เลขที่ <b>${esc(meta.code)}</b><br>ออก ${fmtDateBE(nowDate(), true)} ${fmtTime(nowDate().toISOString())} น.</div></div>
     <div class="rp-body"></div>
-    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v2) • ${esc(CONFIG.ORG)}</span><span class="pg"></span></div></div>`);
+    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v5) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
   host.appendChild(p); return p;
 }
 const overflow = page => { const b = $('.rp-body', page); return b.scrollHeight > b.clientHeight + 1; };
@@ -1206,13 +1491,21 @@ async function buildReport() {
   const type = state.report.type, btn = $('#btnPreview'), P = reportPeriod(type), dept = $('#rDept').value;
   setBusy(btn, true, 'กำลังสร้างรายงาน...');
   try {
+    // สัปดาห์/เดือนที่ยังไม่จบ: ตัดถึง "วันนี้" และเทียบกับช่วงก่อนหน้าจำนวนวันเท่ากัน (period-to-date) — เทียบแบบยุติธรรม
+    const today0 = nowDate(); today0.setHours(0, 0, 0, 0);
+    if (P.a > today0) throw new Error('ช่วงที่เลือกยังไม่ถึง (เป็นวันในอนาคต)');
+    if (P.b > today0) {
+      const n = Math.round((today0 - P.a) / 86400000), pbFull = P.pb;
+      P.b = today0; P.pb = addDays(P.pa, n); if (P.pb > pbFull) P.pb = pbFull;
+      P.label += ` (ข้อมูล ณ ${fmtDateBE(today0, true)})`;
+    }
     await ensureData(dateKey(P.pa), dateKey(P.b), true);
     const f = r => !dept || r.dept === dept;
     const rows = inRange(P.a, P.b, f), prev = inRange(P.pa, P.pb, f);
     const st = computeStats(rows, P.a, P.b), pst = computeStats(prev, P.pa, P.pb);
     state.report.prevLabel = rangeText(P.pa, P.pb);
     const roster = state.employees.filter(e => !dept || e.dept === dept);
-    const meta = { title: TYPE_TH[type], label: P.label, code: 'BRK-' + P.code, dept: dept || 'ทุกแผนก' };
+    const meta = { title: TYPE_TH[type], label: P.label, code: 'BRK-' + P.code, dept: dept || 'ทุกแผนก', by: $('#rBy').value.trim() };
     const cfg = chartConfigs(st, P.a, P.b, true);
     const blocks = [blk(kpiBlock(st, pst))];
     const durCell = r => !r ? '<td class="c mut">—</td><td class="c mut">—</td>' : `<td class="c">${fmtTime(r.start)}–${r.end ? fmtTime(r.end) : '...'}</td><td class="r ${calcStatus(r) === 'over' ? 'red' : ''}">${r.end ? fmtMin(r.durationSec) : STATUS_TH[calcStatus(r)]}</td>`;
@@ -1246,6 +1539,11 @@ async function buildReport() {
       }
       blocks.push(chartsBlock([['แนวโน้มรายวัน', chartImage(cfg.chTrend, 430, 200), 430], ['ตรงเวลา vs เกินเวลา', chartImage(cfg.chDonut, 238, 200), 238]]));
       blocks.push(chartsBlock([['ช่วงเวลาที่มีการพัก (Peak Hours)', chartImage(cfg.chPeak, 430, 200), 430], ['ช่วงที่ 1 vs ช่วงที่ 2', chartImage(cfg.chCompare, 238, 200), 238]]));
+      blocks.push(chartsBlock([['การกระจายของระยะเวลาพัก (นาที)', chartImage(cfg.chHist, 430, 200), 430], ['เกินเวลาตามวันในสัปดาห์', chartImage(cfg.chDow, 238, 200), 238]]));
+      // อันดับพนักงานที่พักเกินเวลา (เฉพาะคนที่เกิน ≥ 1 ครั้ง) + ระดับความรุนแรง
+      if (st.overRank.length) blocks.push(tableBlock(`อันดับพนักงานที่พักเกินเวลา (${st.overRank.length} คน • ${SEV_TH.map((t, i) => t.replace('เกิน ', '') + ' ' + st.sev[i]).join(' / ')} ครั้ง)`,
+        '<tr><th>อันดับ</th><th>รหัส</th><th>ชื่อ-นามสกุล</th><th>พัก</th><th>เกิน (ครั้ง)</th><th>% เกิน</th><th>เกินรวม (น.)</th><th>เกินเฉลี่ย (น.)</th><th>เกินสูงสุด (น.)</th><th>≤5 / 5–10 / &gt;10</th></tr>',
+        st.overRank.map((p, i) => `<tr><td class="c">${i + 1}</td><td class="c">${esc(p.empId)}</td><td>${esc(p.name)}</td><td class="c">${p.done}</td><td class="c red">${p.over}</td><td class="r">${fmtNum(p.overPct, 1)}%</td><td class="r red">${fmtMin(p.overSec)}</td><td class="r">${fmtMin(p.overAvg)}</td><td class="r">${fmtMin(p.overMax)}</td><td class="c">${p.sev.join(' / ')}</td></tr>`)));
       // รายบุคคล: เรียงคนที่เกินเวลามากสุดก่อน เพื่อให้ผู้บริหารเห็นจุดที่ต้องดูแลทันที
       const pe = roster.map(e => st.perEmp[e.id] || { empId: e.id, name: e.name, position: e.position, count: 0, done: 0, avg: 0, max: 0, over: 0, overSec: 0, ontimePct: 0, dayCount: 0, forgot: 0 });
       Object.values(st.perEmp).forEach(p => { if (!pe.find(x => x.empId === p.empId)) pe.push(p); });
@@ -1259,7 +1557,7 @@ async function buildReport() {
       }
       blocks.push(insightsBlock(st, {}));
     }
-    blocks.push(noteBlock()); blocks.push(signBlock());
+    blocks.push(noteBlock());
     await document.fonts.ready;
     const pages = paginate(blocks, meta);
     state.report.pages = pages; state.report.name = `SBK_Break_Report_${P.code}`;
@@ -1356,9 +1654,10 @@ async function importEmployees(file) {
 function renderOverview() {
   const [a, b] = getRange(), rows = filtered(), st = computeStats(rows, a, b);
   $('#rangeLabel').textContent = `📅 ${rangeText(a, b)} • ${fmtNum(rows.length)} รายการ`;
+  $('#heroRange').textContent = `ช่วงข้อมูล: ${rangeText(a, b)} • ${fmtNum(rows.length)} รายการ`;
   $$('#rangeSeg [data-range]').forEach(x => x.classList.toggle('active', x.dataset.range === state.filter.range));
   $('#customRange').classList.toggle('hidden', state.filter.range !== 'custom');
-  renderKPIs(st); renderInsights(st); renderCharts(st); renderTable();
+  renderKPIs(st); renderLive(); renderInsights(st); renderCharts(st); renderRank(st); renderTable();
 }
 async function refreshOverview(force) {
   const [a, b] = getRange(); const t = nowDate();
@@ -1370,7 +1669,7 @@ function saveFilter() { try { localStorage.setItem('sbk_break_dash_filter', JSON
 function switchTab(tab) {
   state.tab = tab;
   $$('.tab-panel').forEach(p => p.classList.toggle('hidden', p.id !== 'tab-' + tab));
-  $$('[data-tab]').forEach(b => { b.classList.toggle('active', b.dataset.tab === tab); if (b.classList.contains('bnav')) b.style.color = b.dataset.tab === tab ? 'var(--brand)' : ''; });
+  $$('[data-tab]').forEach(b => { b.classList.toggle('active', b.dataset.tab === tab);  });
   if (tab === 'overview') renderOverview();
   if (tab === 'report') { updRangeText(); if (state.report.pages.length) renderPreview(state.report.pages); }
   if (tab === 'emp') renderEmpTable();
@@ -1424,11 +1723,16 @@ async function init() {
   if (state.filter.range === 'custom') { $('#fFrom').value = state.filter.from; $('#fTo').value = state.filter.to; }
   handleEvents(); fillFilterOptions(); switchTab('overview');
   if (typeof Chart === 'undefined' || typeof XLSX === 'undefined') toast('โหลดไลบรารีบางส่วนไม่สำเร็จ (กราฟ/Excel) กรุณาตรวจสอบอินเทอร์เน็ต', 'warn', 6000);
-  setInterval(() => { const n = nowDate(); $('#hdrClock').textContent = `${fmtDateBEFull(n)} • ${fmtTimeS(n.toISOString())} น.`; }, 1000);
+  setInterval(() => { const n = nowDate(); $('#hdrClock').textContent = `${fmtDateBEFull(n)} • ${fmtTimeS(n.toISOString())} น.`;
+    $('#heroTime').textContent = fmtTimeS(n.toISOString()); $('#heroDate').textContent = fmtDateBEFull(n); }, 1000);
   // อัปเดตอัตโนมัติทุก 60 วินาที เมื่อเปิดหน้าภาพรวม (ข้อมูลจากหลายเครื่องที่จุดรปภ.)
-  setInterval(() => { if (!document.hidden && state.tab === 'overview' && !Splash.mode) refreshOverview(true); }, 60000);
+  setInterval(() => { if (!document.hidden && state.tab === 'overview' && !Splash.mode) refreshOverview(true); }, 5 * 60000); // โหลดทั้งช่วงทุก 5 นาที
+  setInterval(pullLive, 20000);  // สถานะกำลังพักทุก 20 วินาที
+  setInterval(tickLive, 1000);   // นับเวลาทุกวินาที
   await loadEmployees(false);
   await refreshOverview(true); clockWarning();
+  // คนที่เกินเวลาอยู่แล้วตอนเปิดแอป ไม่ต้องเด้งแจ้งเตือนซ้ำ — แจ้งเฉพาะคนที่เพิ่งข้ามเกณฑ์ระหว่างเปิดดู
+  live().filter(r => !r.end && elapsedSec(r) > recLimitSec(r)).forEach(r => liveAlerted.add(r.id)); state.liveReady = true;
 }
 document.addEventListener('DOMContentLoaded', init);
 </script>
