@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!--
-  SBK_Break_Dashboard_v5.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v5)
+  SBK_Break_Dashboard_v7.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v7)
+  v7: Error handling กลาง, ตรวจเขตเวลาเครื่อง, กันแก้เวลาเกิน 24 ชม., แสดงเวลาถ่ายรูป, ตั้งเวลาตัดการเชื่อมต่อ
   v5: ตัวอักษรในใบรายงาน PDF/JPEG อยู่กึ่งกลางบรรทัดตรงกับหน้าตัวอย่าง, เส้นตารางเส้นเดียว, ลบช่องลงชื่อ,
       รายงานสัปดาห์/เดือนที่ยังไม่จบตัดถึงวันนี้และเทียบช่วงก่อนหน้าจำนวนวันเท่ากัน, สัดส่วนพักครบไม่รวมวันนี้
   v4: ติดตามการพักแบบ Real-time รายบุคคล (พักไป/เหลือ), อันดับพนักงานที่พักเกินเวลา, การกระจายระยะเวลา, วันในสัปดาห์, ระดับความรุนแรง, ความครบถ้วน 2 ช่วง
@@ -630,7 +631,7 @@ function normalizeRecord(r) {
   const e = r.end ? new Date(r.end) : null;
   const rec = { ...r, id: String(r.id), empId: String(r.empId).trim(), breakNo: Number(r.breakNo) === 2 ? 2 : 1,
     date: dateKey(s), start: s.toISOString(), end: e && !isNaN(e) && e >= s ? e.toISOString() : null,
-    limitMin: Number(r.limitMin) || CONFIG.LIMIT_MIN, photoStartUrl: r.photoStartUrl || '', photoEndUrl: r.photoEndUrl || '' };
+    limitMin: Number(r.limitMin) >= 5 && Number(r.limitMin) <= 240 ? Number(r.limitMin) : CONFIG.LIMIT_MIN, photoStartUrl: r.photoStartUrl || '', photoEndUrl: r.photoEndUrl || '' };
   // คำนวณระยะเวลาใหม่จาก start/end เสมอ ไม่เชื่อตัวเลขที่เก็บมา (กันชีตถูกแก้มือ)
   rec.durationSec = rec.end ? Math.round((new Date(rec.end) - s) / 1000) : 0;
   return rec;
@@ -674,16 +675,21 @@ function jsonp(params, timeout = 20000) {
     const q = new URLSearchParams({ ...params, callback: cb, _: Date.now() });
     const s = document.createElement('script'); const t0 = Date.now();
     const clean = () => { delete window[cb]; s.remove(); clearTimeout(t); };
-    const t = setTimeout(() => { clean(); rej(new Error('หมดเวลาเชื่อมต่อ Google Sheets (Timeout)')); }, timeout);
+    const t = setTimeout(() => { clean(); rej(new Error('หมดเวลาเชื่อมต่อ Google Sheets — สัญญาณอินเทอร์เน็ตอาจอ่อน หรือ Web App ยังไม่ได้ Deploy เป็น "Anyone"')); }, timeout);
     window[cb] = data => { clean(); if (data && data.serverTime) Clock.update(data.serverTime, t0, Date.now()); res(data); };
     s.onerror = () => { clean(); rej(new Error('เชื่อมต่อ Google Apps Script ไม่ได้ — ตรวจสอบอินเทอร์เน็ต หรือการ Deploy (Who has access: Anyone)')); };
     s.src = CONFIG.GAS_URL + '?' + q.toString();
     document.head.appendChild(s);
   });
 }
-async function postGAS(payload) {
+async function postGAS(payload, timeout = 45000) {
   // no-cors + text/plain: Apps Script ไม่ส่ง CORS header จึงอ่านผลไม่ได้ → ต้องยืนยันผลด้วย action=status อีกรอบ
-  await fetch(CONFIG.GAS_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+  if (!navigator.onLine) throw new Error('เครื่องไม่ได้เชื่อมต่ออินเทอร์เน็ต');
+  // ตั้งเวลาตัดการเชื่อมต่อ — กันกรณีเน็ตค้างแล้ว fetch ไม่จบ ทำให้คิวส่งข้อมูลหยุดนิ่ง
+  const ac = typeof AbortController !== 'undefined' ? new AbortController() : null, t = ac && setTimeout(() => ac.abort(), timeout);
+  try { await fetch(CONFIG.GAS_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload), signal: ac ? ac.signal : undefined }); }
+  catch (e) { throw new Error(e && e.name === 'AbortError' ? 'ส่งข้อมูลนานเกินกำหนด (เครือข่ายช้า)' : 'ส่งข้อมูลไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ต'); }
+  finally { t && clearTimeout(t); }
 }
 // ส่งแล้วถามผลซ้ำจนกว่าจะยืนยันได้ → คืน { ok:true, res } | { ok:false, error } | { ok:null } (ยังยืนยันไม่ได้ เช่นเน็ตหลุด)
 async function postAndConfirm(payload, key, isDone, tries = 7) {
@@ -693,6 +699,8 @@ async function postAndConfirm(payload, key, isDone, tries = 7) {
     try {
       const st = await jsonp({ action: 'status', id: key }, 12000);
       if (st && st.found) {
+        // retry = server ขัดข้องชั่วคราว → ถือว่ายังไม่สำเร็จ (คิวจะส่งซ้ำเอง) ไม่ใช่การปฏิเสธข้อมูล
+        if (st.retry) return { ok: null, error: st.error };
         if (st.ok === false) return { ok: false, error: st.error || 'บันทึกไม่สำเร็จ' };
         if (!isDone || isDone(st)) return { ok: true, res: st };
       }
@@ -748,6 +756,28 @@ async function capture(el, opts) {
   const P = CanvasRenderingContext2D.prototype, orig = P.fillText;
   P.fillText = function (t, x, y, ...rest) { return orig.call(this, t, x, y - h2cBaselineDelta(this), ...rest); };
   try { return await html2canvas(el, { ...opts, ...H2C_FIX }); } finally { P.fillText = orig; }
+}
+
+/* =====================================================================
+   COMMON 5.5) ERROR HANDLING กลาง — จับ error ที่หลุดทุกจุด ไม่ให้แอปค้าง + เก็บ log ไว้ตรวจสอบย้อนหลัง
+   ===================================================================== */
+const ERR_KEY = 'sbk_break_errlog';
+function logError(where, err) {
+  const msg = String((err && (err.message || err.reason)) || err || 'unknown').slice(0, 300);
+  try { const a = JSON.parse(localStorage.getItem(ERR_KEY) || '[]'); a.push({ t: new Date().toISOString(), where, msg }); localStorage.setItem(ERR_KEY, JSON.stringify(a.slice(-50))); } catch (e) {}
+  try { console.error('[SBK]', where, err); } catch (e) {}
+}
+let _lastErrToast = 0;
+function onUnexpected(where, err) {
+  logError(where, err);
+  // แจ้งผู้ใช้ไม่เกิน 1 ครั้ง/10 วินาที — กันข้อความเด้งรัว
+  if (Date.now() - _lastErrToast > 10000 && document.getElementById('toastBox')) { _lastErrToast = Date.now(); toast('เกิดข้อผิดพลาดที่ไม่คาดคิด ระบบยังทำงานต่อได้ (ถ้าเกิดซ้ำ กรุณารีเฟรชหน้า)', 'err', 6000); }
+}
+window.addEventListener('error', e => { if (e && e.target && e.target !== window) return; /* โหลด script/รูปไม่สำเร็จ จัดการที่จุดนั้นแล้ว */ onUnexpected('window.error', e.error || e.message); });
+window.addEventListener('unhandledrejection', e => onUnexpected('promise', e.reason));
+// ระบบนับวัน/ชั่วโมงตามเวลาเครื่อง — ถ้าเครื่องไม่ได้ตั้งเขตเวลาไทย (UTC+7) วันที่ในรายงานจะเพี้ยน จึงเตือนตั้งแต่เปิดแอป
+function checkTimezone() {
+  if (new Date().getTimezoneOffset() !== -420) toast('เขตเวลาของเครื่องนี้ไม่ใช่เวลาประเทศไทย (UTC+7) — กรุณาตั้งค่าวันที่/เวลาของเครื่องเป็น Bangkok เพื่อให้วันที่ถูกต้อง', 'warn', 9000);
 }
 
 /* =====================================================================
@@ -818,7 +848,7 @@ function slipHTML(r) {
   const head = { over: '#dc2626', active: '#d97706', forgot: '#7c3aed', ontime: '#059669' }[st];
   const icon = { over: '⚠️', active: '⏳', forgot: '❓', ontime: '✅' }[st];
   const dur = r.end ? fmtDur(r.durationSec) : `${fmtDur(elapsedSec(r))} (ยังไม่กลับ)`;
-  const ph = [['เริ่มพัก', photoOf(r, 'Start')], ['กลับจากพัก', photoOf(r, 'End')]].filter(x => x[1]);
+  const ph = [['เริ่มพัก' + (r.photoStartAt ? ' • ' + fmtTimeS(r.photoStartAt) : ''), photoOf(r, 'Start')], ['กลับจากพัก' + (r.photoEndAt ? ' • ' + fmtTimeS(r.photoEndAt) : ''), photoOf(r, 'End')]].filter(x => x[1]);
   const row = (k, v, c) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px dashed #e2e8f0;font-size:14px"><span style="color:#64748b">${k}</span><span style="font-weight:600;text-align:right;${c ? 'color:' + c : ''}">${v}</span></div>`;
   return `<div id="slipCard" style="width:360px;background:#fff;color:#0f172a;font-family:Sarabun,sans-serif;line-height:1.6">
     <div style="background:${head};color:#fff;padding:16px 18px 14px">
@@ -1092,7 +1122,8 @@ function renderLive() {
   $$('[data-fedit]').forEach(b => b.onclick = () => openEdit(b.dataset.fedit));
 }
 // อัปเดตตัวเลขทุกวินาทีโดยไม่ render ใหม่ทั้งก้อน (ลื่นและประหยัดแบต) — render ใหม่เมื่อมีคนเปลี่ยนระดับ/เข้า-ออก
-function tickLive() {
+function tickLive() { try { tickLiveInner(); } catch (e) { logError('tickLive', e); } }
+function tickLiveInner() {
   if (state.tab !== 'overview' || Splash.mode) return;
   const { now, forgot } = liveRows();
   const sig = now.map(r => r.id + lvLevel(r)).join('|') + '#' + forgot.map(r => r.id).join('|');
@@ -1274,7 +1305,7 @@ function renderTable() {
   const slice = rows.slice((t.page - 1) * t.size, t.page * t.size);
   $$('th.sortable').forEach(th => { $('span', th).textContent = th.dataset.sort === t.sort ? (t.dir > 0 ? '▲' : '▼') : ''; });
   $('#tBody').innerHTML = slice.length ? slice.map((r, i) => {
-    const ph = [photoOf(r, 'Start'), photoOf(r, 'End')].filter(Boolean);
+    const pairs = [[photoOf(r, 'Start'), r.photoStartAt], [photoOf(r, 'End'), r.photoEndAt]].filter(x => x[0]), ph = pairs.map(x => x[0]), phT = pairs.map(x => x[1]);
     return `<tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40">
       <td class="py-2 pr-2 text-slate-400">${(t.page - 1) * t.size + i + 1}</td>
       <td class="py-2 pr-2 whitespace-nowrap"><div>${fmtDateBE(r.date, true)}</div><div class="text-xs text-slate-500">${fmtTimeS(r.start)} น.</div></td>
@@ -1283,7 +1314,7 @@ function renderTable() {
       <td class="py-2 pr-2 whitespace-nowrap">${r.end ? fmtTimeS(r.end) + ' น.' : '—'}${r.closedBy ? `<div class="text-[11px] text-violet-600" title="${esc(r.note)}">แก้ไขโดย ${esc(r.closedBy)}</div>` : ''}</td>
       <td class="py-2 pr-2 text-right whitespace-nowrap tabular-nums ${r.st === 'over' ? 'text-red-600 font-semibold' : ''}">${r.end ? fmtDur(r.durationSec) : `<span class="text-amber-600">${fmtClock(elapsedSec(r))}</span>`}</td>
       <td class="py-2 pr-2">${r.st === 'active' && elapsedSec(r) > recLimitSec(r) ? '<span class="chip chip-over">กำลังพัก • เกินแล้ว</span>' : `<span class="chip ${STATUS_CHIP[r.st]}">${STATUS_TH[r.st]}</span>`}</td>
-      <td class="py-2 pr-2"><div class="flex gap-1">${ph.length ? ph.map(s => `<img src="${esc(s)}" referrerpolicy="no-referrer" loading="lazy" class="w-10 h-10 object-cover rounded-lg cursor-zoom-in border border-slate-200 dark:border-slate-700" data-zoom alt="รูปแนบ">`).join('') : '<span class="text-slate-400 text-xs">ไม่มี</span>'}</div></td>
+      <td class="py-2 pr-2"><div class="flex gap-1">${ph.length ? ph.map((s, k) => `<img src="${esc(s)}" title="${phT[k] ? 'ถ่ายเมื่อ ' + fmtTimeS(phT[k]) + ' น.' : ''}" referrerpolicy="no-referrer" loading="lazy" class="w-10 h-10 object-cover rounded-lg cursor-zoom-in border border-slate-200 dark:border-slate-700" data-zoom alt="รูปแนบ">`).join('') : '<span class="text-slate-400 text-xs">ไม่มี</span>'}</div></td>
       <td class="py-2 text-right whitespace-nowrap"><button class="btn btn-ghost !p-1.5 text-xs" data-slip="${r.id}" title="ดูสลิป">🧾</button> <button class="btn btn-ghost !p-1.5 text-xs" data-edit="${r.id}" title="แก้ไขเวลากลับ / ปิดรายการ">✏️</button> <button class="btn btn-ghost !p-1.5 text-xs" data-del="${r.id}" title="ลบ">🗑️</button></td></tr>`;
   }).join('') : `<tr><td colspan="9" class="py-10 text-center text-slate-500">📭 ไม่มีข้อมูลตามเงื่อนไขที่เลือก</td></tr>`;
   $('#tInfo').textContent = total ? `แสดง ${fmtNum((t.page - 1) * t.size + 1)}–${fmtNum(Math.min(total, t.page * t.size))} จาก ${fmtNum(total)} รายการ` : '';
@@ -1328,6 +1359,7 @@ async function saveEdit() {
   if (isNaN(e)) return toast('กรุณาระบุเวลากลับจากพัก', 'warn');
   if (e < new Date(r.start)) return toast('เวลากลับต้องไม่น้อยกว่าเวลาเริ่มพัก', 'err');
   if (e > nowDate()) return toast('เวลากลับต้องไม่เกินเวลาปัจจุบัน', 'err');
+  if (e - new Date(r.start) > 24 * 3600000) return toast('ระยะเวลาพักเกิน 24 ชม. ไม่สมเหตุสมผล กรุณาตรวจสอบวันที่/เวลาอีกครั้ง', 'err', 6000);
   if (!note || !by) return toast('กรุณาระบุเหตุผลและผู้แก้ไข เพื่อการตรวจสอบย้อนหลัง', 'warn');
   try { localStorage.setItem('sbk_break_editor', by); } catch (x) {}
   const upd = { ...r, end: e.toISOString(), note, closedBy: by, updatedAt: nowDate().toISOString() }; delete upd.st;
@@ -1358,7 +1390,7 @@ function doExport(kind) {
   $('#exportMenu').classList.add('hidden');
   const rows = tableRows(); if (!rows.length) return toast('ไม่มีข้อมูลสำหรับ Export ในช่วงที่เลือก', 'warn');
   try {
-    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v5', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
+    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v7', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
     else if (kind === 'csv') {
       const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       const lines = [EXPORT_COLS.map(c => q(c[1])).join(','), ...rows.map(r => { const o = exportRow(r); return EXPORT_COLS.map(c => q(o[c[0]])).join(','); })];
@@ -1460,7 +1492,7 @@ function newPage(host, meta) {
       <div style="flex:1"><div class="t1">${esc(meta.title)}</div><div class="t2">${esc(CONFIG.ORG)} • แผนก${esc(meta.dept)} • ${esc(meta.label)}</div></div>
       <div style="text-align:right;font-size:11px;color:#475569">เลขที่ <b>${esc(meta.code)}</b><br>ออก ${fmtDateBE(nowDate(), true)} ${fmtTime(nowDate().toISOString())} น.</div></div>
     <div class="rp-body"></div>
-    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v5) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
+    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v7) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
   host.appendChild(p); return p;
 }
 const overflow = page => { const b = $('.rp-body', page); return b.scrollHeight > b.clientHeight + 1; };
@@ -1721,7 +1753,7 @@ async function init() {
   try { $('#rBy').value = localStorage.getItem('sbk_break_rby') || ''; } catch (e) {}
   const t = nowDate(); $('#rDate').value = dateKey(t); $('#rMonth').value = `${t.getFullYear()}-${pad(t.getMonth() + 1)}`;
   if (state.filter.range === 'custom') { $('#fFrom').value = state.filter.from; $('#fTo').value = state.filter.to; }
-  handleEvents(); fillFilterOptions(); switchTab('overview');
+  handleEvents(); checkTimezone(); fillFilterOptions(); switchTab('overview');
   if (typeof Chart === 'undefined' || typeof XLSX === 'undefined') toast('โหลดไลบรารีบางส่วนไม่สำเร็จ (กราฟ/Excel) กรุณาตรวจสอบอินเทอร์เน็ต', 'warn', 6000);
   setInterval(() => { const n = nowDate(); $('#hdrClock').textContent = `${fmtDateBEFull(n)} • ${fmtTimeS(n.toISOString())} น.`;
     $('#heroTime').textContent = fmtTimeS(n.toISOString()); $('#heroDate').textContent = fmtDateBEFull(n); }, 1000);
