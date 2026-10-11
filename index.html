@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  SBK_Break_Dashboard_v9.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v9)
+  SBK_Break_Dashboard_v10.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v10 — คู่กับ Form_v10 / Code_Break_v6)
   v9: ตัวชี้วัดหลักฐานภาพ (รูปไม่ครบ) + ตารางตัวชี้วัดเทียบเป้าหมาย + บันทึกการแก้ไขของหัวหน้า (Audit) ในใบรายงาน
   v8: รูปแนบในสลิป/ตารางโหลดผ่าน Apps Script (action=photo) — รูปสลิปที่บันทึก/แชร์มีภาพครบ
   v7: Error handling กลาง, ตรวจเขตเวลาเครื่อง, กันแก้เวลาเกิน 24 ชม., แสดงเวลาถ่ายรูป, ตั้งเวลาตัดการเชื่อมต่อ
@@ -1441,7 +1441,7 @@ function doExport(kind) {
   $('#exportMenu').classList.add('hidden');
   const rows = tableRows(); if (!rows.length) return toast('ไม่มีข้อมูลสำหรับ Export ในช่วงที่เลือก', 'warn');
   try {
-    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v9', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
+    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v10', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
     else if (kind === 'csv') {
       const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       const lines = [EXPORT_COLS.map(c => q(c[1])).join(','), ...rows.map(r => { const o = exportRow(r); return EXPORT_COLS.map(c => q(o[c[0]])).join(','); })];
@@ -1564,7 +1564,7 @@ function newPage(host, meta) {
       <div style="flex:1"><div class="t1">${esc(meta.title)}</div><div class="t2">${esc(CONFIG.ORG)} • แผนก${esc(meta.dept)} • ${esc(meta.label)}</div></div>
       <div style="text-align:right;font-size:11px;color:#475569">เลขที่ <b>${esc(meta.code)}</b><br>ออก ${fmtDateBE(nowDate(), true)} ${fmtTime(nowDate().toISOString())} น.</div></div>
     <div class="rp-body"></div>
-    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v9) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
+    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v10) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
   host.appendChild(p); return p;
 }
 const overflow = page => { const b = $('.rp-body', page); return b.scrollHeight > b.clientHeight + 1; };
