@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!--
-  SBK_Break_Dashboard_v10.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v10 — คู่กับ Form_v10 / Code_Break_v6)
+  SBK_Break_Dashboard_v11.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v11 — คู่กับ Form_v11 / Code_Break_v6)
+  v11: การ์ดไล่สีอ่อนแยกจากพื้นหลัง + พื้นหลังอนิเมชัน
   v9: ตัวชี้วัดหลักฐานภาพ (รูปไม่ครบ) + ตารางตัวชี้วัดเทียบเป้าหมาย + บันทึกการแก้ไขของหัวหน้า (Audit) ในใบรายงาน
   v8: รูปแนบในสลิป/ตารางโหลดผ่าน Apps Script (action=photo) — รูปสลิปที่บันทึก/แชร์มีภาพครบ
   v7: Error handling กลาง, ตรวจเขตเวลาเครื่อง, กันแก้เวลาเกิน 24 ชม., แสดงเวลาถ่ายรูป, ตั้งเวลาตัดการเชื่อมต่อ
@@ -57,10 +58,11 @@
 <style>
   /* ================= DESIGN SYSTEM v3 — Aurora + Glass ================= */
   :root { --brand: #0f766e; --g1: #0d9488; --g2: #4f46e5; --au1: rgba(45,212,191,.40); --au2: rgba(129,140,248,.40); --au3: rgba(56,189,248,.35);
-    --ring: rgba(20,184,166,.22); --ink: #0f172a; --muted: #64748b; --line: rgba(148,163,184,.28); }
+    --ring: rgba(20,184,166,.22); --bg-a: #e3f3f1; --bg-b: #eaeefb; --card-a: rgba(236,253,250,.94); --card-b: rgba(238,242,255,.92); --card-bd: rgba(94,234,212,.55); --card-sh: rgba(13,148,136,.16); --p1: rgba(45,212,191,.55); --p2: rgba(129,140,248,.5); --ink: #0f172a; --muted: #64748b; --line: rgba(148,163,184,.28); }
   html, body { font-family: 'Sarabun', sans-serif; line-height: 1.65; -webkit-tap-highlight-color: transparent; }
   .font-head { font-family: 'Prompt', sans-serif; }
-  body { background: #f3f5fb; color: var(--ink); }
+  /* พื้นหลังโทนสีอ่อน (ไม่ใช่ขาว/เทาล้วน) เพื่อให้การ์ดสีอ่อนอีกโทนลอยเด่นออกมา */
+  body { background: linear-gradient(160deg, var(--bg-a) 0%, #f1f3fb 45%, var(--bg-b) 100%) fixed; color: var(--ink); min-height: 100vh; }
   .dark body { background: #060a17; color: #e2e8f0; }
   /* พื้นหลัง Aurora: วงแสงสีนุ่มหลายชั้น + ตารางจาง ๆ — ใช้ radial-gradient (ไม่ใช้ filter blur) เพื่อให้ลื่นบนมือถือ */
   .bg-aurora { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
@@ -68,20 +70,49 @@
   .bg-aurora .o1 { width: 75vmax; height: 75vmax; left: -22vmax; top: -30vmax; background: radial-gradient(circle, var(--au1) 0%, transparent 62%); animation: orb1 26s ease-in-out infinite; }
   .bg-aurora .o2 { width: 70vmax; height: 70vmax; right: -25vmax; top: -12vmax; background: radial-gradient(circle, var(--au2) 0%, transparent 62%); animation: orb2 30s ease-in-out infinite; }
   .bg-aurora .o3 { width: 80vmax; height: 80vmax; left: 10vmax; bottom: -48vmax; background: radial-gradient(circle, var(--au3) 0%, transparent 62%); animation: orb1 34s ease-in-out infinite reverse; }
-  .bg-aurora::after { content: ''; position: absolute; inset: 0;
-    background-image: linear-gradient(rgba(15,23,42,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,42,.045) 1px, transparent 1px);
-    background-size: 34px 34px; -webkit-mask-image: radial-gradient(ellipse at 50% 0%, #000 25%, transparent 75%); mask-image: radial-gradient(ellipse at 50% 0%, #000 25%, transparent 75%); }
+  .bg-aurora .o4 { width: 46vmax; height: 46vmax; right: 8vmax; bottom: -10vmax; background: radial-gradient(circle, var(--au1) 0%, transparent 60%); opacity: .7; animation: orb3 22s ease-in-out infinite; }
   .dark .bg-aurora i { opacity: .55; }
-  .dark .bg-aurora::after { background-image: linear-gradient(rgba(148,163,184,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.06) 1px, transparent 1px); }
+  /* ริบบอนแสงหมุนช้า ๆ (conic-gradient) — หมุนด้วย transform อย่างเดียว จึงใช้ GPU ไม่กินแรงเครื่อง */
+  .bg-aurora .ribbon { position: absolute; left: 50%; top: 50%; width: 160vmax; height: 160vmax; margin: -80vmax 0 0 -80vmax; border-radius: 50%;
+    background: conic-gradient(from 0deg, transparent 0 12%, var(--au2) 18%, transparent 26% 52%, var(--au3) 60%, transparent 68% 100%);
+    opacity: .28; animation: spin 90s linear infinite; will-change: transform; }
+  .dark .bg-aurora .ribbon { opacity: .16; }
+  /* ตารางจาง ๆ เลื่อนช้า ๆ — ใหญ่กว่าจอ 1 ช่องแล้ววนด้วย translate จึงต่อเนื่องไม่กระตุก */
+  .bg-aurora .grid { position: absolute; inset: -34px; background-image: linear-gradient(rgba(15,23,42,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(15,23,42,.05) 1px, transparent 1px);
+    background-size: 34px 34px; -webkit-mask-image: radial-gradient(ellipse at 50% 0%, #000 25%, transparent 75%); mask-image: radial-gradient(ellipse at 50% 0%, #000 25%, transparent 75%);
+    animation: gridMove 14s linear infinite; will-change: transform; }
+  .dark .bg-aurora .grid { background-image: linear-gradient(rgba(148,163,184,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.07) 1px, transparent 1px); }
+  /* แสงกวาดเฉียงผ่านจอเป็นระยะ */
+  .bg-aurora .sweep { position: absolute; top: -20%; bottom: -20%; width: 34vmax; left: -40vmax; transform: skewX(-18deg);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); animation: sweep 11s ease-in-out infinite; }
+  .dark .bg-aurora .sweep { background: linear-gradient(90deg, transparent, rgba(255,255,255,.05), transparent); }
+  /* ฟองแสงลอยขึ้น */
+  .bg-aurora .parts b { position: absolute; bottom: -40px; left: var(--x); width: var(--s); height: var(--s); border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, rgba(255,255,255,.95), var(--c) 55%, transparent 72%); box-shadow: 0 0 calc(var(--s) * 1.4) var(--c);
+    opacity: 0; animation: rise var(--t) linear var(--d) infinite; will-change: transform, opacity; }
+  .dark .bg-aurora .parts b { background: radial-gradient(circle, var(--c) 0%, transparent 70%); }
   @keyframes orb1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(6vmax,4vmax) scale(1.08); } }
   @keyframes orb2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-5vmax,6vmax) scale(.94); } }
-  @media (prefers-reduced-motion: reduce) { .bg-aurora i { animation: none; } }
+  @keyframes orb3 { 0%,100% { transform: translate(0,0) scale(1); } 33% { transform: translate(-8vmax,-6vmax) scale(1.12); } 66% { transform: translate(4vmax,-10vmax) scale(.92); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes gridMove { to { transform: translate(34px, 34px); } }
+  @keyframes sweep { 0%, 55% { left: -40vmax; } 100% { left: 120vw; } }
+  @keyframes rise { 0% { transform: translate(0,0) scale(.6); opacity: 0; } 10% { opacity: .9; } 50% { transform: translate(28px,-55vh) scale(1); } 85% { opacity: .55; } 100% { transform: translate(-18px,-110vh) scale(.8); opacity: 0; } }
+  /* ผู้ใช้ที่ตั้งค่าลดการเคลื่อนไหว / แท็บไม่ได้แสดง → หยุดอนิเมชันทั้งหมด ประหยัดแบตเตอรี่ */
+  @media (prefers-reduced-motion: reduce) { .bg-aurora *, .bg-aurora .parts b { animation: none !important; } .bg-aurora .parts, .bg-aurora .sweep { display: none; } }
+  .bg-paused .bg-aurora * { animation-play-state: paused !important; }
 
   /* การ์ดกระจก (Glassmorphism) */
-  .card { background: rgba(255,255,255,.74); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5);
-    border: 1px solid rgba(255,255,255,.85); border-radius: 1.4rem;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 12px 32px -14px rgba(30,41,59,.22), 0 2px 6px -2px rgba(30,41,59,.06); }
-  .dark .card { background: rgba(15,23,42,.66); border-color: rgba(148,163,184,.14); box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 14px 34px -14px rgba(0,0,0,.65); }
+  /* การ์ด: ไล่สีอ่อนโทนประจำแอป + ขอบสี + เส้นไฮไลต์ด้านบน (inset shadow ไม่ต้องใช้ ::before จึงไม่กระทบ layout เดิม)
+     + เงาโทนสีเดียวกัน → การ์ดแยกจากพื้นหลังชัดเจน */
+  .card { background: linear-gradient(165deg, var(--card-a) 0%, rgba(255,255,255,.9) 48%, var(--card-b) 100%);
+    -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5);
+    border: 1px solid var(--card-bd); border-radius: 1.4rem;
+    box-shadow: inset 0 3px 0 -1px var(--g1), inset 0 1px 0 rgba(255,255,255,.9), 0 16px 36px -16px var(--card-sh), 0 3px 10px -4px rgba(30,41,59,.10);
+    transition: box-shadow .25s ease, transform .25s ease; }
+  @media (hover: hover) { .card:hover { box-shadow: inset 0 3px 0 -1px var(--g2), inset 0 1px 0 rgba(255,255,255,.9), 0 22px 44px -18px var(--card-sh), 0 4px 12px -4px rgba(30,41,59,.12); } }
+  .dark .card { background: linear-gradient(165deg, rgba(30,41,59,.78), rgba(15,23,42,.72) 50%, rgba(30,27,75,.62)); border-color: rgba(148,163,184,.16);
+    box-shadow: inset 0 3px 0 -1px var(--g1), inset 0 1px 0 rgba(255,255,255,.04), 0 14px 34px -14px rgba(0,0,0,.65); }
   .glass { background: rgba(255,255,255,.7); -webkit-backdrop-filter: blur(18px) saturate(1.6); backdrop-filter: blur(18px) saturate(1.6); }
   .dark .glass { background: rgba(6,10,23,.72); }
   .hdr-line { height: 2px; background: linear-gradient(90deg, var(--g1), var(--g2), #f59e0b, #10b981); opacity: .85; }
@@ -197,6 +228,10 @@
   .kpi::after { content: ''; position: absolute; right: 30px; bottom: -60px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,.08); }
   .kpi-ic { width: 2.6rem; height: 2.6rem; border-radius: .95rem; display: grid; place-items: center; font-size: 1.3rem; background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.3); }
   .mini { border-left: 4px solid var(--mc); }
+  /* การ์ดสถิติย่อยมีแถบสีซ้ายอยู่แล้ว → ไม่ใส่เส้นไฮไลต์บน (มุมจะดูเป็นวงเล็บ) แต่ไล่สีตามสีประจำการ์ด */
+  .card.mini { background: linear-gradient(120deg, color-mix(in srgb, var(--mc) 9%, white) 0%, rgba(255,255,255,.92) 70%); box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 12px 28px -16px var(--card-sh), 0 3px 10px -4px rgba(30,41,59,.10); }
+  @supports not (background: color-mix(in srgb, red 10%, white)) { .card.mini { background: linear-gradient(120deg, var(--card-a), rgba(255,255,255,.92) 70%); } }
+  .dark .card.mini { background: linear-gradient(120deg, rgba(30,41,59,.8), rgba(15,23,42,.72)); box-shadow: 0 12px 28px -16px rgba(0,0,0,.6); }
   .live-ic { animation: liveBeat 2s ease-in-out infinite; }
   @keyframes liveBeat { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
   .lv { position: relative; border-radius: 1.2rem; padding: .9rem 1rem; background: rgba(255,255,255,.82); border: 1px solid rgba(148,163,184,.28); transition: .2s; }
@@ -244,7 +279,7 @@
 </style>
 </head>
 <body class="text-slate-800 dark:text-slate-200 min-h-screen">
-<div class="bg-aurora" aria-hidden="true"><i class="o1"></i><i class="o2"></i><i class="o3"></i></div>
+<div class="bg-aurora" aria-hidden="true"><i class="o1"></i><i class="o2"></i><i class="o3"></i><i class="o4"></i><span class="ribbon"></span><span class="grid"></span><span class="sweep"></span><div class="parts"><b style="--x:4%;--s:10px;--d:0s;--t:19s;--c:var(--p1)"></b><b style="--x:11%;--s:6px;--d:6s;--t:23s;--c:var(--p2)"></b><b style="--x:19%;--s:14px;--d:3s;--t:27s;--c:var(--p1)"></b><b style="--x:27%;--s:8px;--d:11s;--t:21s;--c:var(--p2)"></b><b style="--x:35%;--s:5px;--d:2s;--t:18s;--c:var(--p1)"></b><b style="--x:43%;--s:12px;--d:8s;--t:25s;--c:var(--p2)"></b><b style="--x:51%;--s:7px;--d:14s;--t:22s;--c:var(--p1)"></b><b style="--x:59%;--s:16px;--d:5s;--t:29s;--c:var(--p2)"></b><b style="--x:67%;--s:6px;--d:1s;--t:20s;--c:var(--p1)"></b><b style="--x:75%;--s:11px;--d:9s;--t:24s;--c:var(--p2)"></b><b style="--x:83%;--s:8px;--d:4s;--t:26s;--c:var(--p1)"></b><b style="--x:90%;--s:13px;--d:12s;--t:28s;--c:var(--p2)"></b><b style="--x:96%;--s:6px;--d:7s;--t:19s;--c:var(--p1)"></b><b style="--x:31%;--s:9px;--d:16s;--t:30s;--c:var(--p2)"></b></div></div>
 <!-- ====================== SPLASH / IDLE SCREEN ====================== -->
 <div id="splash" role="dialog" aria-label="หน้าเปิดแอป">
   <div class="sp-blob" style="width:420px;height:420px;background:#f472b6;top:-120px;left:-100px"></div>
@@ -963,6 +998,9 @@ function bindCommonUI() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('#lightbox').classList.add('hidden'); $('#slipModal').classList.add('hidden'); } });
 }
 
+// หยุดอนิเมชันพื้นหลังเมื่อแท็บถูกซ่อน (สลับแอป/ล็อกจอ) — ไม่เปลืองแบตเตอรี่และ CPU ของเครื่องที่เปิดทิ้งไว้ทั้งวัน
+document.addEventListener('visibilitychange', () => document.documentElement.classList.toggle('bg-paused', document.hidden));
+
 </script>
 <script>
 'use strict';
@@ -1441,7 +1479,7 @@ function doExport(kind) {
   $('#exportMenu').classList.add('hidden');
   const rows = tableRows(); if (!rows.length) return toast('ไม่มีข้อมูลสำหรับ Export ในช่วงที่เลือก', 'warn');
   try {
-    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v10', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
+    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v11', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
     else if (kind === 'csv') {
       const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       const lines = [EXPORT_COLS.map(c => q(c[1])).join(','), ...rows.map(r => { const o = exportRow(r); return EXPORT_COLS.map(c => q(o[c[0]])).join(','); })];
@@ -1564,7 +1602,7 @@ function newPage(host, meta) {
       <div style="flex:1"><div class="t1">${esc(meta.title)}</div><div class="t2">${esc(CONFIG.ORG)} • แผนก${esc(meta.dept)} • ${esc(meta.label)}</div></div>
       <div style="text-align:right;font-size:11px;color:#475569">เลขที่ <b>${esc(meta.code)}</b><br>ออก ${fmtDateBE(nowDate(), true)} ${fmtTime(nowDate().toISOString())} น.</div></div>
     <div class="rp-body"></div>
-    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v10) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
+    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v11) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
   host.appendChild(p); return p;
 }
 const overflow = page => { const b = $('.rp-body', page); return b.scrollHeight > b.clientHeight + 1; };
