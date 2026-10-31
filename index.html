@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!--
-  SBK_Break_Dashboard_v13.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v13 — คู่กับ Form_v13 / Code_Break_v6)
+  SBK_Break_Dashboard_v14.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v14 — คู่กับ Form_v15 / Code_Break_v7)
+  v14: ใช้ระบบส่งข้อมูลชุดใหม่ (keepalive + ยืนยันผลนานขึ้น) ร่วมกับฟอร์ม
   v13: ไอคอนแอปมุมโค้งพื้นหลังโปร่งใส
   v12: แจ้งเตือนใกล้หมดเวลาพัก/เกินเวลา (แถบเตือน + เสียง + เสียงพูด + แจ้งเตือนระบบ)
   v11: การ์ดไล่สีอ่อนแยกจากพื้นหลัง + พื้นหลังอนิเมชัน
@@ -118,6 +119,11 @@
   @media (hover: hover) { .card:hover { box-shadow: inset 0 3px 0 -1px var(--g2), inset 0 1px 0 rgba(255,255,255,.9), 0 22px 44px -18px var(--card-sh), 0 4px 12px -4px rgba(30,41,59,.12); } }
   .dark .card { background: linear-gradient(165deg, rgba(30,41,59,.78), rgba(15,23,42,.72) 50%, rgba(30,27,75,.62)); border-color: rgba(148,163,184,.16);
     box-shadow: inset 0 3px 0 -1px var(--g1), inset 0 1px 0 rgba(255,255,255,.04), 0 14px 34px -14px rgba(0,0,0,.65); }
+  /* ---------- สถานะบันทึกบนหน้าสลิป ---------- */
+  .slip-sync { margin: 0 auto .6rem; max-width: 28rem; border-radius: 1rem; padding: .6rem .9rem; font-size: .85rem; font-weight: 700; text-align: center; color: #fff; box-shadow: 0 10px 24px -12px rgba(0,0,0,.5); }
+  .slip-sync.ok { background: linear-gradient(135deg, #10b981, #0d9488); }
+  .slip-sync.busy { background: linear-gradient(135deg, #f59e0b, #f97316); animation: baPulse 1.6s ease-in-out infinite; }
+  .slip-sync.err { background: linear-gradient(135deg, #f43f5e, #dc2626); }
   /* ---------- แถบแจ้งเตือนเวลาพัก ---------- */
   .ba-card { border-radius: 1.1rem; padding: .8rem .9rem; color: #fff; cursor: pointer; animation: baIn .35s cubic-bezier(.2,.9,.3,1.3);
     box-shadow: 0 18px 40px -14px rgba(15,23,42,.45), inset 0 1px 0 rgba(255,255,255,.35); }
@@ -566,6 +572,7 @@
 <div id="slipModal" class="hidden fixed inset-0 z-50 modal-bg overflow-y-auto">
   <div class="min-h-full flex items-start sm:items-center justify-center p-4">
     <div class="w-full max-w-md">
+      <div id="slipSync" class="hidden" role="status" aria-live="polite"></div>
       <div class="flex justify-center"><div id="slipWrap" class="rounded-2xl overflow-hidden shadow-2xl"></div></div>
       <div class="card p-3 mt-3 grid grid-cols-2 gap-2">
         <button id="slipShareImg" class="btn text-white bg-[#06C755] hover:brightness-95 col-span-2 !py-3">💬 ส่งรูปสลิปเข้า LINE</button>
@@ -746,17 +753,27 @@ function jsonp(params, timeout = 20000) {
 async function postGAS(payload, timeout = 45000) {
   // no-cors + text/plain: Apps Script ไม่ส่ง CORS header จึงอ่านผลไม่ได้ → ต้องยืนยันผลด้วย action=status อีกรอบ
   if (!navigator.onLine) throw new Error('เครื่องไม่ได้เชื่อมต่ออินเทอร์เน็ต');
+  const body = JSON.stringify(payload);
+  // v15: ข้อมูลเล็ก (≤ 60KB เช่น "เวลา" ที่ไม่มีรูป) ส่งแบบ keepalive → เบราว์เซอร์ส่งต่อจนจบแม้ผู้ใช้สลับไป LINE / ปิดแท็บ / ล็อกจอ
+  const keepalive = body.length < 60000;
   // ตั้งเวลาตัดการเชื่อมต่อ — กันกรณีเน็ตค้างแล้ว fetch ไม่จบ ทำให้คิวส่งข้อมูลหยุดนิ่ง
   const ac = typeof AbortController !== 'undefined' ? new AbortController() : null, t = ac && setTimeout(() => ac.abort(), timeout);
-  try { await fetch(CONFIG.GAS_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload), signal: ac ? ac.signal : undefined }); }
+  try { await fetch(CONFIG.GAS_URL, { method: 'POST', mode: 'no-cors', keepalive, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body, signal: ac ? ac.signal : undefined }); }
   catch (e) { throw new Error(e && e.name === 'AbortError' ? 'ส่งข้อมูลนานเกินกำหนด (เครือข่ายช้า)' : 'ส่งข้อมูลไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ต'); }
   finally { t && clearTimeout(t); }
 }
+// ส่งโดยไม่รอผล (ใช้ตอนแอปถูกพับ/ปิด) — keepalive ทำให้คำขอวิ่งต่อหลังหน้าเว็บหายไป; ข้อมูลซ้ำไม่เป็นไรเพราะ upsert ฝั่ง server เป็น idempotent
+function beaconGAS(payload) {
+  try { const body = JSON.stringify(payload); if (body.length > 60000) return false;
+    fetch(CONFIG.GAS_URL, { method: 'POST', mode: 'no-cors', keepalive: true, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body }).catch(() => {}); return true; }
+  catch (e) { return false; }
+}
 // ส่งแล้วถามผลซ้ำจนกว่าจะยืนยันได้ → คืน { ok:true, res } | { ok:false, error } | { ok:null } (ยังยืนยันไม่ได้ เช่นเน็ตหลุด)
-async function postAndConfirm(payload, key, isDone, tries = 7) {
+// v15: ถามผลนานขึ้น (~25 วินาที, ห่างขึ้นเรื่อย ๆ) — Apps Script ช่วงคนใช้เยอะ/เปิดครั้งแรกตอบช้าได้ถึง 10–20 วินาที
+async function postAndConfirm(payload, key, isDone, tries = 10) {
   await postGAS(payload);
   for (let i = 0; i < tries; i++) {
-    await sleep(i === 0 ? 900 : 1500);
+    await sleep(i === 0 ? 700 : Math.min(4000, 1000 + i * 400));
     try {
       const st = await jsonp({ action: 'status', id: key }, 12000);
       if (st && st.found) {
@@ -974,6 +991,7 @@ function openSlip(r) {
   $$('[data-zoom]', $('#slipWrap')).forEach(i => i.onclick = () => { if (!i.dataset.photo) openLightbox(i.src); });
   $('#slipModal').classList.remove('hidden');
   slipReady = hydratePhotos($('#slipWrap')); // โหลดรูปจาก Drive มาเป็น dataURL ก่อน เพื่อให้รูปสลิปที่บันทึก/แชร์มีภาพครบ
+  if (typeof window.renderSlipSync === 'function') window.renderSlipSync(); // ฟอร์ม: แสดงสถานะบันทึกเข้า Sheets บนหน้าสลิป
 }
 function lineText(r) {
   const st = calcStatus(r); const icon = { over: '⚠️', active: '⏳', forgot: '❓', ontime: '✅' }[st];
@@ -1640,7 +1658,7 @@ function doExport(kind) {
   $('#exportMenu').classList.add('hidden');
   const rows = tableRows(); if (!rows.length) return toast('ไม่มีข้อมูลสำหรับ Export ในช่วงที่เลือก', 'warn');
   try {
-    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v13', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
+    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v14', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
     else if (kind === 'csv') {
       const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       const lines = [EXPORT_COLS.map(c => q(c[1])).join(','), ...rows.map(r => { const o = exportRow(r); return EXPORT_COLS.map(c => q(o[c[0]])).join(','); })];
@@ -1763,7 +1781,7 @@ function newPage(host, meta) {
       <div style="flex:1"><div class="t1">${esc(meta.title)}</div><div class="t2">${esc(CONFIG.ORG)} • แผนก${esc(meta.dept)} • ${esc(meta.label)}</div></div>
       <div style="text-align:right;font-size:11px;color:#475569">เลขที่ <b>${esc(meta.code)}</b><br>ออก ${fmtDateBE(nowDate(), true)} ${fmtTime(nowDate().toISOString())} น.</div></div>
     <div class="rp-body"></div>
-    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v13) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
+    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v14) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
   host.appendChild(p); return p;
 }
 const overflow = page => { const b = $('.rp-body', page); return b.scrollHeight > b.clientHeight + 1; };
