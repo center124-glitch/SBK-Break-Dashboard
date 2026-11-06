@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!--
-  SBK_Break_Dashboard_v14.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v14 — คู่กับ Form_v15 / Code_Break_v7)
+  SBK_Break_Dashboard_v15.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v15 — คู่กับ Form_v16 / Code_Break_v8)
+  v15: แสดง "เวลากลับจริงที่แจ้ง" (ลืมกด) ในตาราง/สลิป/รายงาน + ปุ่มใช้เวลาจริงในหน้าแก้ไข + ตัวกรอง/สถิติรายการแจ้งเวลาย้อนหลัง
   v14: ใช้ระบบส่งข้อมูลชุดใหม่ (keepalive + ยืนยันผลนานขึ้น) ร่วมกับฟอร์ม
   v13: ไอคอนแอปมุมโค้งพื้นหลังโปร่งใส
   v12: แจ้งเตือนใกล้หมดเวลาพัก/เกินเวลา (แถบเตือน + เสียง + เสียงพูด + แจ้งเตือนระบบ)
@@ -475,7 +476,7 @@
     <div class="card p-5">
       <div class="flex flex-wrap items-center gap-3 mb-3">
         <div class="mr-auto"><div class="sec-h"><span class="sec-ic" style="--c1:#64748b;--c2:#334155">📋</span><div><div class="sec-t">ประวัติการพักแบบละเอียด</div><div class="sec-s">ค้นหา • เรียงลำดับ • แก้ไขเวลากลับ • ลบ</div></div></div></div>
-        <select id="tStatus" class="inp !py-1.5 !w-auto text-sm"><option value="">ทุกสถานะ</option><option value="active">กำลังพัก</option><option value="forgot">ลืมกดกลับ</option><option value="ontime">ตรงเวลา</option><option value="over">เกินเวลา</option><option value="nophoto">📷 รูปไม่ครบ</option><option value="edited">✏️ แก้ไขโดยหัวหน้า</option></select>
+        <select id="tStatus" class="inp !py-1.5 !w-auto text-sm"><option value="">ทุกสถานะ</option><option value="active">กำลังพัก</option><option value="forgot">ลืมกดกลับ</option><option value="ontime">ตรงเวลา</option><option value="over">เกินเวลา</option><option value="nophoto">📷 รูปไม่ครบ</option><option value="edited">✏️ แก้ไขโดยหัวหน้า</option><option value="reported">↩ แจ้งเวลากลับจริง (ลืมกด)</option></select>
         <select id="tBreak" class="inp !py-1.5 !w-auto text-sm"><option value="">ทุกช่วง</option><option value="1">ช่วงที่ 1</option><option value="2">ช่วงที่ 2</option></select>
         <select id="tSize" class="inp !py-1.5 !w-auto text-sm"><option>10</option><option selected>25</option><option>50</option><option>100</option></select>
       </div>
@@ -559,7 +560,8 @@
     <p id="edInfo" class="text-sm text-slate-500 mb-4"></p>
     <label class="text-sm font-semibold block mb-1">เวลากลับจากพัก</label>
     <input type="datetime-local" step="1" id="edEnd" class="inp mb-1">
-    <p id="edDur" class="text-xs text-slate-500 mb-3"></p>
+    <p id="edDur" class="text-xs text-slate-500 mb-2"></p>
+    <div id="edActual" class="hidden mb-3 rounded-xl bg-sky-50 dark:bg-sky-500/10 ring-1 ring-sky-200 dark:ring-sky-500/30 p-3 text-sm"></div>
     <label class="text-sm font-semibold block mb-1">เหตุผล / หมายเหตุ (จำเป็น)</label>
     <input id="edNote" class="inp mb-3" maxlength="200" placeholder="เช่น พนักงานลืมกดกลับ ยืนยันเวลาจากกล้อง CCTV">
     <label class="text-sm font-semibold block mb-1">ผู้แก้ไข (จำเป็น)</label>
@@ -702,6 +704,8 @@ function normalizeRecord(r) {
     limitMin: Number(r.limitMin) >= 5 && Number(r.limitMin) <= 240 ? Number(r.limitMin) : CONFIG.LIMIT_MIN, photoStartUrl: r.photoStartUrl || '', photoEndUrl: r.photoEndUrl || '' };
   // คำนวณระยะเวลาใหม่จาก start/end เสมอ ไม่เชื่อตัวเลขที่เก็บมา (กันชีตถูกแก้มือ)
   rec.durationSec = rec.end ? Math.round((new Date(rec.end) - s) / 1000) : 0;
+  // v16: เวลากลับจริงที่ จนท. แจ้ง (กรณีลืมกด) — ต้องอยู่ระหว่างเวลาเริ่ม ถึงเวลาที่กดกลับ ไม่งั้นถือว่าไม่มี
+  { const a = r.actualEnd ? new Date(r.actualEnd) : null; rec.actualEnd = a && !isNaN(a) && rec.end && a >= s && a <= new Date(rec.end) ? a.toISOString() : ''; rec.actualReason = rec.actualEnd ? String(r.actualReason || '') : ''; }
   return rec;
 }
 
@@ -758,7 +762,9 @@ async function postGAS(payload, timeout = 45000) {
   const keepalive = body.length < 60000;
   // ตั้งเวลาตัดการเชื่อมต่อ — กันกรณีเน็ตค้างแล้ว fetch ไม่จบ ทำให้คิวส่งข้อมูลหยุดนิ่ง
   const ac = typeof AbortController !== 'undefined' ? new AbortController() : null, t = ac && setTimeout(() => ac.abort(), timeout);
-  try { await fetch(CONFIG.GAS_URL, { method: 'POST', mode: 'no-cors', keepalive, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body, signal: ac ? ac.signal : undefined }); }
+  // Promise.race: บางเครื่อง/บางเครือข่าย fetch ไม่ตอบและไม่ error (สลับ Wi-Fi↔4G) — ห้ามให้คิวรอไม่รู้จบ
+  try { await Promise.race([fetch(CONFIG.GAS_URL, { method: 'POST', mode: 'no-cors', keepalive, headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body, signal: ac ? ac.signal : undefined }),
+    new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), { name: 'AbortError' })), timeout + 2000))]); }
   catch (e) { throw new Error(e && e.name === 'AbortError' ? 'ส่งข้อมูลนานเกินกำหนด (เครือข่ายช้า)' : 'ส่งข้อมูลไม่สำเร็จ — ตรวจสอบอินเทอร์เน็ต'); }
   finally { t && clearTimeout(t); }
 }
@@ -771,7 +777,9 @@ function beaconGAS(payload) {
 // ส่งแล้วถามผลซ้ำจนกว่าจะยืนยันได้ → คืน { ok:true, res } | { ok:false, error } | { ok:null } (ยังยืนยันไม่ได้ เช่นเน็ตหลุด)
 // v15: ถามผลนานขึ้น (~25 วินาที, ห่างขึ้นเรื่อย ๆ) — Apps Script ช่วงคนใช้เยอะ/เปิดครั้งแรกตอบช้าได้ถึง 10–20 วินาที
 async function postAndConfirm(payload, key, isDone, tries = 10) {
-  await postGAS(payload);
+  // v16: ส่งไม่สำเร็จ (เน็ตสะดุด/หมดเวลา) ข้อมูลอาจถึง server แล้วก็ได้ (หรือถูกส่งไปแล้วด้วย keepalive) → ยังถามผลต่อ 3 รอบก่อนสรุปว่าไม่สำเร็จ
+  let sendErr = null;
+  try { await postGAS(payload); } catch (e) { sendErr = e; tries = Math.min(tries, 3); if (typeof state !== 'undefined') state.lastSyncErr = e.message; }
   for (let i = 0; i < tries; i++) {
     await sleep(i === 0 ? 700 : Math.min(4000, 1000 + i * 400));
     try {
@@ -782,9 +790,10 @@ async function postAndConfirm(payload, key, isDone, tries = 10) {
         if (st.ok === false) return { ok: false, error: st.error || 'บันทึกไม่สำเร็จ' };
         if (!isDone || isDone(st)) return { ok: true, res: st };
       }
-    } catch (e) { /* ลองใหม่รอบถัดไป */ }
+    } catch (e) { if (typeof state !== 'undefined') state.lastSyncErr = e.message; /* ลองใหม่รอบถัดไป */ }
   }
-  return { ok: null };
+  if (!sendErr && typeof state !== 'undefined') state.lastSyncErr = 'ส่งแล้วแต่ยังยืนยันผลจาก Google Sheets ไม่ได้ (ระบบจะลองใหม่)';
+  return { ok: null, error: sendErr && sendErr.message };
 }
 async function fetchEmployees() {
   const r = await jsonp({ action: 'employees' });
@@ -973,8 +982,9 @@ function slipHTML(r) {
       ${row('ช่วงการพัก', `พักช่วงที่ ${r.breakNo}`)}
       ${row('วันที่', fmtDateBEFull(keyToDate(r.date)))}
       ${row('เวลาเริ่มพัก', fmtTimeS(r.start) + ' น.')}
-      ${row('เวลากลับจากพัก', r.end ? fmtTimeS(r.end) + ' น.' : '—')}
+      ${row(r.actualEnd ? 'เวลากดกลับ (ระบบ)' : 'เวลากลับจากพัก', r.end ? fmtTimeS(r.end) + ' น.' : '—')}
       ${row('ระยะเวลาพัก', dur, head)}
+      ${r.actualEnd ? row('เวลากลับจริง (แจ้ง)', `${fmtTime(r.actualEnd)} น. <span style="font-weight:400;color:#64748b">(${fmtDur((new Date(r.actualEnd) - new Date(r.start)) / 1000)})</span>`, '#6d28d9') + row('เหตุที่กดช้า', esc(r.actualReason || '-')) : ''}
       ${row('เกณฑ์ที่กำหนด', `ไม่เกิน ${Number(r.limitMin) || CONFIG.LIMIT_MIN} นาที`)}
       ${r.note ? row('หมายเหตุ', esc(r.note)) : ''}
       ${r.closedBy ? row('ปิดรายการโดย', esc(r.closedBy)) : ''}
@@ -999,6 +1009,7 @@ function lineText(r) {
     `ช่วงพัก: ช่วงที่ ${r.breakNo}`, `วันที่: ${fmtDateBE(keyToDate(r.date))}`,
     `เริ่มพัก: ${fmtTime(r.start)} น.`, `กลับจากพัก: ${r.end ? fmtTime(r.end) + ' น.' : 'ยังไม่กลับ'}`,
     `ระยะเวลา: ${r.end ? fmtDur(r.durationSec) : fmtDur(elapsedSec(r)) + ' (กำลังพัก)'}`, `สถานะ: ${statusText(r)}`,
+    r.actualEnd ? `แจ้งกลับจริง: ${fmtTime(r.actualEnd)} น. (${r.actualReason || '-'}) — ระบบคิดตามเวลาที่กด` : '',
     r.note ? `หมายเหตุ: ${r.note}` : '', `เลขที่: ${slipNo(r)}`].filter(Boolean).join('\n');
 }
 async function slipBlob() {
@@ -1304,6 +1315,7 @@ function computeStats(rows, a, b) {
   const tk = dateKey(nowDate()), ed = {}; rows.filter(r => r.date !== tk).forEach(r => (ed[r.empId + '|' + r.date] ||= new Set()).add(r.breakNo));
   const empDays = Object.values(ed), full = empDays.filter(x => x.size >= 2).length;
   const edited = rows.filter(r => r.closedBy).length;
+  const reported = rows.filter(r => r.actualEnd && r.end); // จนท. แจ้งเวลากลับจริง (ลืมกด) — ระบบยังคิดตามเวลาที่กด
   // หลักฐานภาพ: รูปเริ่มพักต้องมีทุกรายการ, รูปกลับจากพักต้องมีเมื่อกลับเองจากฟอร์ม (รายการที่หัวหน้าปิดแทนได้รับยกเว้น)
   let phReq = 0, phHave = 0; const phMiss = [];
   rows.forEach(r => { const n = photoNeed(r); phReq += n.req; phHave += n.have; if (n.have < n.req) phMiss.push(r); });
@@ -1314,7 +1326,7 @@ function computeStats(rows, a, b) {
     overExcessAvg: over.length ? over.reduce((s, r) => s + r.durationSec - recLimitSec(r), 0) / over.length : 0,
     active: rows.filter(r => r.st === 'active').length, forgot: rows.filter(r => r.st === 'forgot').length,
     b1: by(1), b2: by(2), starts, occMin, occAvg: occMin.map(m => m / 60 / days), days, daily, perEmp,
-    hist, sev, dow, hourOver, empDays: empDays.length, full, single: empDays.length - full, edited,
+    hist, sev, dow, hourOver, empDays: empDays.length, full, single: empDays.length - full, edited, reported,
     phReq, phHave, phMiss, phPct: phReq ? pct(phHave, phReq) : null, ontimePct: done.length ? pct(done.length - over.length, done.length) : null,
     overRank: Object.values(perEmp).filter(p => p.over > 0).sort((x, y) => y.over - x.over || y.overSec - x.overSec || x.empId.localeCompare(y.empId))
   };
@@ -1476,6 +1488,8 @@ function buildInsights(st, opt = {}) {
     if (ds.length >= 2 && ds[0].over) out.push(['📅', `วัน${TH_DAYS[ds[0].i]}มีอัตราเกินเวลาสูงสุด ${fmtNum(ds[0].p, 1)}% • ต่ำสุดคือวัน${TH_DAYS[ds[ds.length - 1].i]} ${fmtNum(ds[ds.length - 1].p, 1)}%`, 'indigo']); }
   if (st.empDays) out.push(['🧮', `พักครบ 2 ช่วง ${fmtNum(st.full)} จาก ${fmtNum(st.empDays)} คน-วัน (ไม่รวมวันนี้) (${fmtNum(pct(st.full, st.empDays), 1)}%) • พักเพียงช่วงเดียว ${fmtNum(st.single)} คน-วัน`, st.single ? 'sky' : 'emerald']);
   if (st.phReq) out.push(st.phMiss.length ? ['📷', `หลักฐานภาพไม่ครบ ${fmtNum(st.phMiss.length)} รายการ (มีรูป ${fmtNum(st.phHave)} จาก ${fmtNum(st.phReq)} รูปที่ต้องมี = ${fmtNum(st.phPct, 1)}%) — ดูได้จากตัวกรอง "รูปไม่ครบ" ในตาราง`, 'amber'] : ['📷', `หลักฐานภาพครบทุกรายการ (${fmtNum(st.phHave)} รูป)`, 'emerald']);
+  if (st.reported.length) { const pend = st.reported.filter(r => r.end !== r.actualEnd && !r.closedBy).length;
+    out.push(['↩', `จนท. แจ้งเวลากลับจริงย้อนหลัง (ลืมกด) ${fmtNum(st.reported.length)} รายการ${pend ? ` — รอหัวหน้าตรวจสอบ ${fmtNum(pend)} รายการ (ตัวกรอง "แจ้งเวลากลับจริง")` : ''} • ระบบคิดเวลาตามที่กด`, 'sky']); }
   if (st.edited) out.push(['✏️', `มีรายการที่หัวหน้างานแก้ไขเวลากลับ ${fmtNum(st.edited)} รายการ (ตรวจสอบเหตุผลได้ในตาราง)`, 'slate']);
   if (st.forgot) out.push(['❓', `มี ${st.forgot} รายการที่ค้างเกิน ${CONFIG.FORGOT_H} ชม. (น่าจะลืมกดกลับ) — ควรตรวจสอบและแก้ไขเวลากลับ`, 'violet']);
   if (opt.roster) { const took = new Set(st.rows.map(r => r.empId)); const none = opt.roster.filter(e => !took.has(e.id));
@@ -1555,7 +1569,7 @@ function chartImage(cfg, w, h) {
    ===================================================================== */
 function tableRows() {
   const t = state.table;
-  const rows = filtered().map(r => ({ ...r, st: calcStatus(r) })).filter(r => (!t.status || (t.status === 'nophoto' ? photoNeed(r).have < photoNeed(r).req : t.status === 'edited' ? !!r.closedBy : r.st === t.status)) && (!t.brk || r.breakNo === +t.brk));
+  const rows = filtered().map(r => ({ ...r, st: calcStatus(r) })).filter(r => (!t.status || (t.status === 'nophoto' ? photoNeed(r).have < photoNeed(r).req : t.status === 'edited' ? !!r.closedBy : t.status === 'reported' ? !!r.actualEnd : r.st === t.status)) && (!t.brk || r.breakNo === +t.brk));
   const k = t.sort;
   return rows.sort((a, b) => {
     let x = a[k], y = b[k];
@@ -1578,7 +1592,7 @@ function renderTable() {
       <td class="py-2 pr-2 whitespace-nowrap"><div>${fmtDateBE(r.date, true)}</div><div class="text-xs text-slate-500">${fmtTimeS(r.start)} น.</div></td>
       <td class="py-2 pr-2"><div class="font-semibold">${esc(r.name)}</div><div class="text-xs text-slate-500">${esc(r.empId)}${r.position ? " • " + esc(r.position) : ""}</div></td>
       <td class="py-2 pr-2 whitespace-nowrap">ช่วงที่ ${r.breakNo}</td>
-      <td class="py-2 pr-2 whitespace-nowrap">${r.end ? fmtTimeS(r.end) + ' น.' : '—'}${r.closedBy ? `<div class="text-[11px] text-violet-600" title="${esc(r.note)}">แก้ไขโดย ${esc(r.closedBy)}</div>` : ''}</td>
+      <td class="py-2 pr-2 whitespace-nowrap">${r.end ? fmtTimeS(r.end) + ' น.' : '—'}${r.closedBy ? `<div class="text-[11px] text-violet-600" title="${esc(r.note)}">แก้ไขโดย ${esc(r.closedBy)}</div>` : ''}${r.actualEnd ? `<div class="text-[11px] text-sky-700 dark:text-sky-300 font-semibold" title="${esc(r.actualReason)}">↩ แจ้งกลับจริง ${fmtTime(r.actualEnd)} น.</div>` : ''}</td>
       <td class="py-2 pr-2 text-right whitespace-nowrap tabular-nums ${r.st === 'over' ? 'text-red-600 font-semibold' : ''}">${r.end ? fmtDur(r.durationSec) : `<span class="text-amber-600">${fmtClock(elapsedSec(r))}</span>`}</td>
       <td class="py-2 pr-2">${r.st === 'active' && elapsedSec(r) > recLimitSec(r) ? '<span class="chip chip-over">กำลังพัก • เกินแล้ว</span>' : `<span class="chip ${STATUS_CHIP[r.st]}">${STATUS_TH[r.st]}</span>`}</td>
       <td class="py-2 pr-2"><div class="flex gap-1">${ph.length ? ph.map((s, k) => `<img ${photoAttrs(s)} title="${phT[k] ? 'ถ่ายเมื่อ ' + fmtTimeS(phT[k]) + ' น.' : ''}" class="w-10 h-10 object-cover rounded-lg cursor-zoom-in border border-slate-200 dark:border-slate-700" data-zoom alt="รูปแนบ">`).join('') : ''}${(() => { const n = photoNeed(r); return n.have < n.req ? `<span class="chip chip-active text-[11px]" title="รูปที่ต้องมี ${n.req} รูป มีจริง ${n.have} รูป">ขาด${!n.start ? 'รูปเริ่ม' : ''}${!n.start && !n.end ? '/' : ''}${!n.end ? 'รูปกลับ' : ''}</span>` : ''; })()}</div></td>
@@ -1615,6 +1629,10 @@ function openEdit(id) {
   $('#edInfo').textContent = `${r.name} • ช่วงที่ ${r.breakNo} • เริ่ม ${fmtDateBE(r.date, true)} ${fmtTimeS(r.start)} น.`;
   const def = r.end ? new Date(r.end) : new Date(new Date(r.start).getTime() + recLimitSec(r) * 1000);
   $('#edEnd').value = toLocalInput(def); $('#edNote').value = r.end ? (r.note || '') : 'ลืมกดกลับจากพัก'; $('#edBy').value = localStorage.getItem('sbk_break_editor') || '';
+  // v16: จนท. แจ้งเวลากลับจริงไว้ (ลืมกด) → หัวหน้ากดใช้เวลานั้นได้ทันทีหลังตรวจสอบ
+  const ea = $('#edActual'); ea.classList.toggle('hidden', !r.actualEnd);
+  if (r.actualEnd) { ea.innerHTML = `↩ จนท. แจ้งว่ากลับถึงจุดจริง <b>${fmtTimeS(r.actualEnd)} น.</b> (${esc(r.actualReason || '-')})<br>กดกลับในระบบ ${r.end ? fmtTimeS(r.end) + ' น.' : '-'} • ถ้าใช้เวลาจริง = ${fmtDur((new Date(r.actualEnd) - new Date(r.start)) / 1000)}<br><button type="button" class="btn btn-ghost !py-1 !px-3 text-xs mt-2" id="edUseActual">ใช้เวลากลับจริงที่แจ้ง</button>`;
+    $('#edUseActual').onclick = () => { $('#edEnd').value = toLocalInput(new Date(r.actualEnd)); $('#edNote').value = `ยืนยันเวลากลับจริงตามที่ จนท. แจ้ง (${r.actualReason || 'ลืมกดกลับ'})`; updEditDur(); }; }
   updEditDur(); $('#editModal').classList.remove('hidden');
 }
 // ช่องเวลาเก็บถึงวินาที แต่เวลาเริ่มอาจมีเศษมิลลิวินาที (ข้อมูลเก่า) → บวกเศษเดิมกลับ ให้ระยะเวลา = ส่วนต่างของเวลาที่เห็นบนจอพอดี
@@ -1645,20 +1663,20 @@ async function saveEdit() {
    ===================================================================== */
 const EXPORT_COLS = [['id', 'รหัสรายการ'], ['slip', 'เลขที่สลิป'], ['dateBE', 'วันที่ (พ.ศ.)'], ['day', 'วัน'], ['empId', 'รหัสพนักงาน'], ['name', 'ชื่อ-นามสกุล'], ['position', 'ตำแหน่ง'], ['dept', 'แผนก'],
   ['breakNo', 'ช่วงพัก'], ['startT', 'เวลาเริ่ม'], ['endT', 'เวลากลับ'], ['minutes', 'ระยะเวลา (นาที)'], ['limitMin', 'เกณฑ์ (นาที)'], ['overMin', 'เกิน (นาที)'], ['statusTH', 'สถานะ'],
-  ['note', 'หมายเหตุ'], ['closedBy', 'แก้ไขโดย'], ['photoStartUrl', 'รูปเริ่มพัก'], ['photoEndUrl', 'รูปกลับจากพัก'], ['device', 'จุด/เครื่อง'], ['start', 'start (ISO)'], ['end', 'end (ISO)']];
+  ['note', 'หมายเหตุ'], ['closedBy', 'แก้ไขโดย'], ['actualEnd', 'เวลากลับจริง (แจ้ง)'], ['actualReason', 'เหตุที่กดช้า'], ['photoStartUrl', 'รูปเริ่มพัก'], ['photoEndUrl', 'รูปกลับจากพัก'], ['device', 'จุด/เครื่อง'], ['start', 'start (ISO)'], ['end', 'end (ISO)']];
 function exportRow(r) {
   const st = calcStatus(r), lim = recLimitSec(r);
   return { id: r.id, slip: slipNo(r), dateBE: fmtDateBE(r.date), day: TH_DAYS[keyToDate(r.date).getDay()], empId: r.empId, name: r.name, position: r.position, dept: r.dept,
     breakNo: r.breakNo, startT: fmtTimeS(r.start), endT: r.end ? fmtTimeS(r.end) : '', minutes: r.end ? +(r.durationSec / 60).toFixed(2) : '', limitMin: r.limitMin,
     overMin: r.end && r.durationSec > lim ? +((r.durationSec - lim) / 60).toFixed(2) : 0, statusTH: STATUS_TH[st], note: r.note || '', closedBy: r.closedBy || '',
-    photoStartUrl: r.photoStartUrl, photoEndUrl: r.photoEndUrl, device: r.device || '', start: r.start, end: r.end || '' };
+    actualEnd: r.actualEnd ? fmtTimeS(r.actualEnd) : '', actualReason: r.actualReason || '', photoStartUrl: r.photoStartUrl, photoEndUrl: r.photoEndUrl, device: r.device || '', start: r.start, end: r.end || '' };
 }
 function exportName(ext) { const [a, b] = getRange(); return `SBK_Break_${dateKey(a)}${dateKey(a) !== dateKey(b) ? '_to_' + dateKey(b) : ''}.${ext}`; }
 function doExport(kind) {
   $('#exportMenu').classList.add('hidden');
   const rows = tableRows(); if (!rows.length) return toast('ไม่มีข้อมูลสำหรับ Export ในช่วงที่เลือก', 'warn');
   try {
-    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v14', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
+    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v15', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
     else if (kind === 'csv') {
       const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       const lines = [EXPORT_COLS.map(c => q(c[1])).join(','), ...rows.map(r => { const o = exportRow(r); return EXPORT_COLS.map(c => q(o[c[0]])).join(','); })];
@@ -1766,6 +1784,14 @@ function auditBlock(rows) {
   return tableBlock(`บันทึกการแก้ไขโดยหัวหน้างาน (${ed.length} รายการ)`, '<tr><th>ที่</th><th>วันที่</th><th>ชื่อ-นามสกุล</th><th>ช่วง</th><th>เริ่ม–กลับ</th><th>ระยะเวลา</th><th>แก้ไขโดย</th><th>เหตุผล/หมายเหตุ</th></tr>',
     ed.map((r, i) => `<tr><td class="c">${i + 1}</td><td class="c">${fmtDateBE(r.date, true)}</td><td>${esc(r.name)}</td><td class="c">${r.breakNo}</td><td class="c">${fmtTime(r.start)}–${r.end ? fmtTime(r.end) : '...'}</td><td class="r ${calcStatus(r) === 'over' ? 'red' : ''}">${r.end ? fmtDur(r.durationSec) : '-'}</td><td>${esc(r.closedBy)}</td><td style="font-size:10.5px">${esc(r.note || '')}</td></tr>`));
 }
+// รายการที่ จนท. แจ้งเวลากลับจริงย้อนหลัง — แสดงคู่กับเวลาที่กด และผลถ้าใช้เวลาจริง ให้ตรวจสอบย้อนหลังได้
+function reportedBlock(rows) {
+  const rp = rows.filter(r => r.actualEnd && r.end).sort((x, y) => Date.parse(x.start) - Date.parse(y.start));
+  if (!rp.length) return null;
+  return tableBlock(`รายการแจ้งเวลากลับจริงย้อนหลัง (ลืมกด) — ${rp.length} รายการ`, '<tr><th>ที่</th><th>วันที่</th><th>ชื่อ-นามสกุล</th><th>ช่วง</th><th>เริ่ม</th><th>กดกลับ</th><th>แจ้งกลับจริง</th><th>ตามที่กด</th><th>ตามที่แจ้ง</th><th>เหตุผล</th></tr>',
+    rp.map((r, i) => { const a = (new Date(r.actualEnd) - new Date(r.start)) / 1000, lim = recLimitSec(r);
+      return `<tr><td class="c">${i + 1}</td><td class="c">${fmtDateBE(r.date, true)}</td><td>${esc(r.name)}</td><td class="c">${r.breakNo}</td><td class="c">${fmtTime(r.start)}</td><td class="c">${fmtTime(r.end)}</td><td class="c">${fmtTime(r.actualEnd)}</td><td class="r ${r.durationSec > lim ? 'red' : ''}">${fmtMin(r.durationSec)}</td><td class="r ${a > lim ? 'red' : 'grn'}">${fmtMin(a)}</td><td style="font-size:10.5px">${esc(r.actualReason || '')}${r.closedBy ? ' • หัวหน้า: ' + esc(r.closedBy) : ''}</td></tr>`; }));
+}
 function tableBlock(title, head, rows, opt = {}) { return { kind: 'table', title, head, rows, colgroup: opt.colgroup || '' }; }
 function makeTable(b, cont) {
   return blk(`<div><div class="rp-sec">${esc(b.title)}${cont ? ' (ต่อ)' : ''}</div><table class="rp">${b.colgroup}<thead>${b.head}</thead><tbody></tbody></table></div>`);
@@ -1774,14 +1800,14 @@ function chartsBlock(items) { // items: [title, img, width]
   return blk(`<div style="display:flex;gap:10px">${items.map(([t, img, w]) => `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:6px 8px;width:${w + 18}px;box-sizing:border-box"><div style="font-family:Prompt;font-weight:600;font-size:12px;margin-bottom:2px">${t}</div>${img ? `<img src="${img}" style="width:${w}px;height:200px;display:block">` : '<div class="mut" style="height:200px;display:flex;align-items:center;justify-content:center">ไม่มีข้อมูล</div>'}</div>`).join('')}</div>`);
 }
 function insightsBlock(st, opt) { return blk(`<div><div class="rp-sec">ข้อสังเกตและการวิเคราะห์</div><ul class="rp-ins">${buildInsights(st, opt).map(([i, t]) => `<li>${i} ${esc(t)}</li>`).join('')}</ul></div>`); }
-function noteBlock() { return blk(`<div class="rp-note"><b>นิยามและเงื่อนไข:</b> เกินเวลา = ระยะเวลาพักจริงมากกว่า ${CONFIG.LIMIT_MIN}:00 นาที (คิดละเอียดระดับวินาที ตามเกณฑ์ที่บันทึกไว้กับแต่ละรายการ) • ค่าเฉลี่ย/มัธยฐาน/สูงสุด คำนวณจากรายการที่กลับจากพักแล้วเท่านั้น • "ลืมกดกลับ" = ค้างเกิน ${CONFIG.FORGOT_H} ชม. ไม่นำมาคำนวณ • หลักฐานภาพ: ต้องมีรูปเริ่มพักทุกรายการ และรูปกลับจากพักเมื่อกลับเองจากฟอร์ม (รายการที่หัวหน้าปิดแทนได้รับยกเว้น) • เวลาบันทึกอ้างอิงนาฬิกา server • ข้อมูลจาก Google Sheets ณ เวลาออกรายงาน</div>`); }
+function noteBlock() { return blk(`<div class="rp-note"><b>นิยามและเงื่อนไข:</b> เกินเวลา = ระยะเวลาพักจริงมากกว่า ${CONFIG.LIMIT_MIN}:00 นาที (คิดละเอียดระดับวินาที ตามเกณฑ์ที่บันทึกไว้กับแต่ละรายการ) • ค่าเฉลี่ย/มัธยฐาน/สูงสุด คำนวณจากรายการที่กลับจากพักแล้วเท่านั้น • "ลืมกดกลับ" = ค้างเกิน ${CONFIG.FORGOT_H} ชม. ไม่นำมาคำนวณ • "แจ้งกลับจริง" = เวลาที่ จนท. แจ้งว่ากลับถึงจุดก่อนกด (ลืมกด) แสดงเพื่อตรวจสอบ — สถิติคิดตามเวลาที่กด เว้นแต่หัวหน้าแก้ไข • หลักฐานภาพ: ต้องมีรูปเริ่มพักทุกรายการ และรูปกลับจากพักเมื่อกลับเองจากฟอร์ม (รายการที่หัวหน้าปิดแทนได้รับยกเว้น) • เวลาบันทึกอ้างอิงนาฬิกา server • ข้อมูลจาก Google Sheets ณ เวลาออกรายงาน</div>`); }
 function newPage(host, meta) {
   const p = blk(`<div class="rp-page">
     <div class="rp-head"><img src="${LOGO_SRC}" style="height:40px">
       <div style="flex:1"><div class="t1">${esc(meta.title)}</div><div class="t2">${esc(CONFIG.ORG)} • แผนก${esc(meta.dept)} • ${esc(meta.label)}</div></div>
       <div style="text-align:right;font-size:11px;color:#475569">เลขที่ <b>${esc(meta.code)}</b><br>ออก ${fmtDateBE(nowDate(), true)} ${fmtTime(nowDate().toISOString())} น.</div></div>
     <div class="rp-body"></div>
-    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v14) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
+    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v15) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
   host.appendChild(p); return p;
 }
 const overflow = page => { const b = $('.rp-body', page); return b.scrollHeight > b.clientHeight + 1; };
@@ -1849,7 +1875,7 @@ async function buildReport() {
       const ov = rows.filter(r => calcStatus(r) === 'over').sort((x, y) => (y.durationSec - recLimitSec(y)) - (x.durationSec - recLimitSec(x)));
       if (ov.length) blocks.push(tableBlock('รายการที่พักเกินเวลา', '<tr><th>ที่</th><th>ชื่อ-นามสกุล</th><th>ช่วง</th><th>เริ่ม</th><th>กลับ</th><th>ระยะเวลา</th><th>เกิน</th><th>หมายเหตุ</th></tr>',
         ov.map((r, i) => `<tr><td class="c">${i + 1}</td><td>${esc(r.name)}</td><td class="c">${r.breakNo}</td><td class="c">${fmtTimeS(r.start)}</td><td class="c">${fmtTimeS(r.end)}</td><td class="r">${fmtDur(r.durationSec)}</td><td class="r red">${fmtDur(r.durationSec - recLimitSec(r))}</td><td style="font-size:10.5px">${esc(r.note || '')}</td></tr>`)));
-      { const a = auditBlock(rows); if (a) blocks.push(a); }
+      { const a = auditBlock(rows); if (a) blocks.push(a); const rb = reportedBlock(rows); if (rb) blocks.push(rb); }
       blocks.push(insightsBlock(st, { roster }));
     } else {
       // สรุปรายวัน
@@ -1879,7 +1905,7 @@ async function buildReport() {
         if (top.length) blocks.push(tableBlock('10 อันดับการพักนานที่สุด', '<tr><th>ที่</th><th>วันที่</th><th>ชื่อ-นามสกุล</th><th>ช่วง</th><th>เวลา</th><th>ระยะเวลา</th><th>ผล</th></tr>',
           top.map((r, i) => `<tr><td class="c">${i + 1}</td><td class="c">${fmtDateBE(r.date, true)}</td><td>${esc(r.name)}</td><td class="c">${r.breakNo}</td><td class="c">${fmtTime(r.start)}–${fmtTime(r.end)}</td><td class="r">${fmtDur(r.durationSec)}</td><td class="c ${calcStatus(r) === 'over' ? 'red' : 'grn'}">${STATUS_TH[calcStatus(r)]}</td></tr>`)));
       }
-      { const a = auditBlock(rows); if (a) blocks.push(a); }
+      { const a = auditBlock(rows); if (a) blocks.push(a); const rb = reportedBlock(rows); if (rb) blocks.push(rb); }
       blocks.push(insightsBlock(st, {}));
     }
     blocks.push(noteBlock());
