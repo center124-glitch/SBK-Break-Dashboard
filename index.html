@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!--
-  SBK_Break_Dashboard_v16.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v16 — คู่กับ Form_v18 / Code_Break_v8)
+  SBK_Break_Dashboard_v17.html — แอปแดชบอร์ดสรุปสถิติการพักพนักงาน + ใบรายงาน (v17 — คู่กับ Form_v19 / Code_Break_v9)
+  v17: ป้องกันช่วงวันที่กำหนดเองผิดรูปแบบ/ยาวเกิน/อนาคต, จำกัดข้อมูลที่จำในเครื่อง 45 วัน (กันพื้นที่เต็ม)
   v16: เพิ่มสีสัน/อนิเมชัน (ขอบการ์ดไล่สีหมุน, สปอตไลต์, KPI แสงกวาด, เข้าฉากทีละใบ, ประกายใน Hero, ปุ่มแสงวิ่ง+ระลอกคลื่น)
   v15: แสดง "เวลากลับจริงที่แจ้ง" (ลืมกด) ในตาราง/สลิป/รายงาน + ปุ่มใช้เวลาจริงในหน้าแก้ไข + ตัวกรอง/สถิติรายการแจ้งเวลาย้อนหลัง
   v14: ใช้ระบบส่งข้อมูลชุดใหม่ (keepalive + ยืนยันผลนานขึ้น) ร่วมกับฟอร์ม
@@ -1320,7 +1321,8 @@ async function ensureData(from, to, force = false) {
     (data.records || []).forEach(x => { const r = normalizeRecord(x); if (r) state.records.set(r.id, r); });
     state.loaded = { from: f, to: t, at: Date.now() };
     setPill('ok', `● อัปเดต ${fmtTime(nowDate().toISOString())}`);
-    try { localStorage.setItem('sbk_break_dash_cache', JSON.stringify({ loaded: state.loaded, records: live() })); } catch (e) {}
+    // จำข้อมูล 45 วันล่าสุดไว้แสดงตอนออฟไลน์ (ไม่จำทั้งหมด กันพื้นที่ localStorage เต็ม ~5MB)
+    try { const cut = dateKey(addDays(nowDate(), -45)); localStorage.setItem('sbk_break_dash_cache', JSON.stringify({ records: live().filter(r => r.date >= cut) })); } catch (e) { try { localStorage.removeItem('sbk_break_dash_cache'); } catch (e2) {} }
   } catch (e) {
     setPill('err', '● ออฟไลน์'); toast('โหลดข้อมูลไม่สำเร็จ: ' + e.message + (state.records.size ? ' (แสดงข้อมูลล่าสุดที่จำไว้)' : ''), 'err', 6000);
   } finally { state.loading = false; }
@@ -1342,7 +1344,13 @@ function getRange(f = state.filter) {
     case 'month': return [new Date(t.getFullYear(), t.getMonth(), 1), t];
     case '7d': return [addDays(t, -6), t];
     case '30d': return [addDays(t, -29), t];
-    case 'custom': { const a = f.from ? keyToDate(f.from) : t, b = f.to ? keyToDate(f.to) : a; return a <= b ? [a, b] : [b, a]; }
+    case 'custom': {
+      // v17: วันที่ว่าง/ผิดรูปแบบ → ใช้วันนี้; ช่วงยาวเกิน 400 วัน → ตัดเหลือ 400 วันล่าสุด (กันโหลดข้อมูลมหาศาลจนหน้าเว็บค้าง/หมดเวลา)
+      const ok = k => /^\d{4}-\d{2}-\d{2}$/.test(k || '') && !isNaN(keyToDate(k));
+      let a = ok(f.from) ? keyToDate(f.from) : t, b = ok(f.to) ? keyToDate(f.to) : a; if (a > b) [a, b] = [b, a];
+      if (b > t) b = t; if (a > b) a = b;
+      if ((b - a) / 86400000 > 400) { a = addDays(b, -400); if (!getRange._warned) { getRange._warned = true; toast('ช่วงวันที่ยาวเกิน 400 วัน — แสดงเฉพาะ 400 วันล่าสุดของช่วงที่เลือก', 'warn', 6000); } }
+      return [a, b]; }
     default: return [t, t];
   }
 }
@@ -1771,7 +1779,7 @@ function doExport(kind) {
   $('#exportMenu').classList.add('hidden');
   const rows = tableRows(); if (!rows.length) return toast('ไม่มีข้อมูลสำหรับ Export ในช่วงที่เลือก', 'warn');
   try {
-    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v16', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
+    if (kind === 'json') downloadBlob(new Blob([JSON.stringify({ app: 'SBK Break Notify', version: 'v17', exportedAt: nowDate().toISOString(), records: rows.map(({ st, ...r }) => r) }, null, 1)], { type: 'application/json' }), exportName('json'));
     else if (kind === 'csv') {
       const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       const lines = [EXPORT_COLS.map(c => q(c[1])).join(','), ...rows.map(r => { const o = exportRow(r); return EXPORT_COLS.map(c => q(o[c[0]])).join(','); })];
@@ -1902,7 +1910,7 @@ function newPage(host, meta) {
       <div style="flex:1"><div class="t1">${esc(meta.title)}</div><div class="t2">${esc(CONFIG.ORG)} • แผนก${esc(meta.dept)} • ${esc(meta.label)}</div></div>
       <div style="text-align:right;font-size:11px;color:#475569">เลขที่ <b>${esc(meta.code)}</b><br>ออก ${fmtDateBE(nowDate(), true)} ${fmtTime(nowDate().toISOString())} น.</div></div>
     <div class="rp-body"></div>
-    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v16) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
+    <div class="rp-foot"><span>ระบบแจ้งพักพนักงาน (SBK Break Notify v17) • ${esc(CONFIG.ORG)}${meta.by ? ' • จัดทำโดย ' + esc(meta.by) : ''}</span><span class="pg"></span></div></div>`);
   host.appendChild(p); return p;
 }
 const overflow = page => { const b = $('.rp-body', page); return b.scrollHeight > b.clientHeight + 1; };
